@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>114-5 英文解析互動 Web App</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* 隱藏水平捲動條，保持畫面簡潔 */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // ==========================================
+    // 0. SVG Icons (替代 lucide-react)
+    // ==========================================
+    const Icon = ({ name, size = 24, className = "" }) => {
+      const icons = {
+        BookOpen: <g><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></g>,
+        Volume2: <g><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></g>,
+        CheckCircle: <g><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></g>,
+        AlertCircle: <g><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></g>,
+        FileText: <g><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></g>,
+        Info: <g><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></g>,
+        X: <g><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></g>,
+      };
+      return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          {icons[name]}
+        </svg>
+      );
+    };
+
+    // ==========================================
+    // 1. 全域變數、防呆機制與北美腔調發音優化
+    // ==========================================
+    const safeGet = (obj, path, defaultValue = "") => {
+      return path.split('.').reduce((acc, part) => (acc && acc[part] !== undefined ? acc[part] : defaultValue), obj);
+    };
+
+    const stripSpeaker = (text) => {
+      return text.replace(/^[^:\n]+:\s*/gm, '');
+    };
+
+    const playAudio = (text) => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        
+        const cleanText = text.replace(/\*\*/g, ''); 
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+
+        const voices = window.speechSynthesis.getVoices();
+        const usVoice = voices.find(v => v.name.includes('Google US English')) || 
+                        voices.find(v => v.lang === 'en-US' && v.name.includes('Samantha')) || 
+                        voices.find(v => v.lang === 'en-US' && (v.name.includes('Zira') || v.name.includes('Aria'))) || 
+                        voices.find(v => v.lang === 'en-US'); 
+
+        if (usVoice) {
+          utterance.voice = usVoice;
+        } else {
+          utterance.lang = 'en-US';
+        }
+
+        utterance.rate = 0.9; 
+        utterance.pitch = 1.0;
+        
+        window.speechSynthesis.speak(utterance);
+      }
+    };
+
+    const speak = (text) => playAudio(text);
+
+    const speakFullPassage = (contentArray) => {
+      const fullText = contentArray.map(item => item.en).join('\n');
+      playAudio(fullText);
+    };
+
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.getVoices(); 
+    }
+
+    // ==========================================
+    // 2. 試題資料庫 
+    // ==========================================
+    const passages = {
+      p1: {
+        title: "綜合測驗 (21-24) 氣候變遷與臺灣防洪",
+        type: "cloze",
+        content: [
+          { en: "Our island, Taiwan, is facing increasing problems from extreme weather, like strong typhoons and heavy rains.", ch: "我們的島嶼臺灣正日益面臨極端天氣的問題，例如強颱與豪雨。" },
+          { en: "(21) It is clear that climate change is making these events more frequent and intense.", ch: "(21) 顯然，氣候變遷使這些事件變得更為頻繁且強烈。" },
+          { en: "Looking back at 2025, we see that Typhoon Danas landed in Chiayi in July.", ch: "回顧2025年，我們可以發現七月丹娜絲颱風自嘉義登陸。" },
+          { en: "This storm caused serious roof damage, power cuts, and huge farm losses across the southern regions, especially in Chiayi and Tainan.", ch: "此次風災造成南部各地屋頂嚴重受損、停電與龐大的農業損失，嘉義、臺南尤為嚴重。" },
+          { en: "Later, in late July, heavy rains brought record rainfall, leading to widespread floods, sadly including deaths and injuries, mainly in Yunlin, Chiayi, Tainan, Kaohsiung, and Pingtung, with some areas (22) receiving over 2000mm of rain.", ch: "其後在七月底，強降雨刷新降雨量紀錄並引發大規模淹水，不幸造成死傷，主要集中於雲林、嘉義、臺南、高雄與屏東；部分地區 (22) 累積雨量逾2,000毫米。" },
+          { en: "To minimize flood impact, some flood control strategies can be used.", ch: "為了讓洪災衝擊減至最小，有些防洪策略可以被使用。" },
+          { en: "For instance, \"gray\" structures, like pumping stations and basins, are being built in some places to hold water for flood control.", ch: "例如，部分地區正在興建像是抽水站和滯洪池這類的「灰色」設施，用來蓄水防洪。" },
+          { en: "Besides, using \"green\" ideas to reduce flooding is another way.", ch: "此外，另一項策略是採用「綠色」理念來減少洪水發生。" },
+          { en: "Specifically, building \"Sponge City\" (23) helps roads soak up rainwater.", ch: "具體來說，打造「海綿城市」 (23) 有助於道路吸納雨水。" },
+          { en: "Moreover, local people play an important part in flood control too.", ch: "再者，當地民眾在防洪上也扮演重要角色。" },
+          { en: "They lower water levels in their fish farms.", ch: "他們調降魚塭的水位。" },
+          { en: "In addition, special insurance offers financial support for losses driven by flooding.", ch: "此外，專屬保險亦提供災損的財務支援。" },
+          { en: "Unfortunately, (24) despite these efforts, a very big disaster might still happen in the future and result in widespread damage.", ch: "不幸的是，(24) 儘管有這些努力，大規模的災害在未來仍舊可能發生，因而導致災害。" },
+          { en: "But when people get fully prepared, they will recover quickly even if that happens.", ch: "但是當民眾做好準備，即便那種災害發生，也會很快復原。" }
+        ]
+      },
+      p2: {
+        title: "綜合測驗 (25-28) 聯邦醫療保險與補助計畫",
+        type: "cloze",
+        content: [
+          { en: "Medicare and Medicaid are two important programs that help older people with health care in the U.S.", ch: "聯邦醫療保險與醫療補助計畫是美國協助年長者獲得醫療照護的兩項重要計畫。" },
+          { en: "Medicare provides health care (25) for most Americans aged 65 or older.", ch: "聯邦醫療保險 (25) 為多數年滿65歲的美國人提供醫療照護。" },
+          { en: "This federal program covers hospital and doctor services, but generally does not pay for long-term care, such as long nursing home stays or daily home health assistance.", ch: "這項聯邦計畫涵蓋醫院與醫師的服務，但通常不支付長期照護，例如長期入住護理之家或每日的居家照護協助。" },
+          { en: "Many people find these gaps surprising and struggle with high personal costs.", ch: "許多人對這些落差感到意外，並且為高昂的個人成本所苦。" },
+          { en: "(26) For example, Medicare only pays for up to 100 days of skilled care in a nursing home after a hospital stay of at least three days.", ch: "(26) 例如，在住院至少三天之後，聯邦醫療保險只支付最長100天護理之家的專業照護。" },
+          { en: "After 20 days, people must pay a daily share of costs.", ch: "超過第20天，民眾必須每日自付部分費用。" },
+          { en: "Given these limits, Medicaid serves as an important federal and state assistance program.", ch: "基於這些限制，醫療補助計畫作為一項由聯邦與各州共同提供的協助計畫，就顯得格外重要。" },
+          { en: "It is significant for millions of low-income older adults and people with disabilities.", ch: "它對數以百萬計的低收入年長者與身心障礙者十分重要。" },
+          { en: "For over 12 million individuals, (27) covered by both Medicare and Medicaid, Medicaid makes Medicare more affordable by financing their insurance fees each month and small payments for care.", ch: "對超過1,200萬名同時 (27) 受聯邦醫療保險與醫療補助計畫保障的人而言，醫療補助計畫透過每月替他們支付保費，以及醫療照護的小額自付費，使聯邦醫療保險更能負擔得起。" },
+          { en: "This support also offers (28) access to important services like long-term care in nursing homes and home care, allowing them to live safely in their communities.", ch: "這項支援也提供 (28) 取得重要服務的管道，例如護理之家的長期照護與居家照護，讓他們能在社區中安全生活。" },
+          { en: "However, these home care services are not always offered and vary greatly by each state.", ch: "然而，這些居家照護服務未必一定都會提供，且各州差異甚大。" }
+        ]
+      },
+      p3: {
+        title: "閱讀測驗 (29-30) 圖書館服務與規定",
+        type: "reading",
+        content: [
+          { en: "[Table Summary] Harbor Main Library: Tue-Fri 08:00-21:00, Sat-Sun 08:00-18:00, Mon closed. Borrow limit: 20 items. Late fee: NT$2 for books/magazines, NT$5 for DVDs per day.", ch: "[表格摘要] 港灣總館：週二至週五08:00-21:00，週末08:00-18:00，週一休館。借閱上限20件。逾期罰金：書/雜誌每日2元，DVD每日5元。" },
+          { en: "Riverbank Branch: Tue-Fri 08:00-19:00, Sat-Sun 08:00-17:00. Limit: 15 items. Sunrise Branch: Tue-Sun 08:00-18:00. Limit: 15 items.", ch: "河岸分館：週二至週五08:00-19:00，週末08:00-17:00。上限15件。日出分館：週二至週日08:00-18:00。上限15件。" },
+          { en: "Notes 1. Loan period: Books 21 days; New books 14 days; Magazines 7 days; DVDs 7 days.", ch: "注意事項 1. 借期：一般書21天；新書14天；雜誌7天；DVD 7天。" },
+          { en: "2. You may renew once for the same loan period if the item is not overdue and no one has placed a hold.", ch: "2. 未逾期且無人預約者，可續借一次，續借天數與原借期相同。" },
+          { en: "3. If the due date falls on a closed day, it will be extended to the next open day.", ch: "3. 如到期日逢休館日，順延至下一個開館日。" },
+          { en: "4. All libraries, including the Main Library and all branches, are closed on national holidays.", ch: "4. 含總館與各分館，國定假日全館休館。" }
+        ]
+      },
+      p4: {
+        title: "閱讀測驗 (31-32) 診所門診時間表",
+        type: "reading",
+        content: [
+          { en: "Ben is discussing medical arrangements with Amy and asking about available times to see a doctor.", ch: "班正在和艾咪討論就醫安排，並詢問有哪些可預約時段可以看醫生。" },
+          { en: "Amy: Which department do you need?", ch: "艾咪：你需要哪一個科別？" },
+          { en: "Ben: Family Medicine. My brother has a cough. I can bring him on Tuesday or Thursday afternoons.", ch: "班：家醫科。我弟弟在咳嗽。我可以在星期二或星期四下午帶他去。" },
+          { en: "Amy: Dr. Young sees patients on Mondays and Thursdays.", ch: "艾咪：楊醫師在星期一和星期四看診。" },
+          { en: "Ben: How can I make an appointment?", ch: "班：我要怎麼掛號？" },
+          { en: "Amy: You can book online, by phone, or in person. If it's full, please come 30 minutes early to the front desk to get a number card.", ch: "艾咪：你可以透過網路、電話或親自現場掛號。如果額滿，請提早30分鐘到櫃檯抽號碼牌。" },
+          { en: "Ben: Thanks. By the way, I also have some eye problems. Could you recommend a doctor?", ch: "班：謝謝。對了，我的眼睛也有些問題。可以推薦一位醫師嗎？" },
+          { en: "Amy: Yes, Dr. Chen is a reliable doctor I would recommend.", ch: "艾咪：可以。我會推薦陳醫師，他很值得信賴。" },
+          { en: "[Table Summary] Family Medicine (Dr. Young): Mon, Thu 2:00-6:00 p.m. Eye Clinic (Dr. Chen): Tue, Sat 8:00-12:00 a.m., 2:00-6:00 p.m. ENT (Dr. Lee): Wed, Sat 8:00-12:00 a.m.", ch: "[表格摘要] 家醫科(楊醫師)：週一、四下午2-6點。眼科(陳醫師)：週二、六上午8-12點、下午2-6點。耳鼻喉科(李醫師)：週三、六上午8-12點。" }
+        ]
+      },
+      p5: {
+        title: "閱讀測驗 (33-35) 校園資源回收資料",
+        type: "reading",
+        content: [
+          { en: "Read the table below. It shows the weight (kg) of paper, plastic, and metal recycled at the school from January to June. Use the data to answer the questions.", ch: "閱讀下表。表中顯示學校於一月至六月回收之紙類、塑膠與金屬的重量(公斤)。請運用所提供的資料回答問題。" },
+          { en: "[Table Summary - Paper] Jan:120, Feb:130, Mar:110, Apr:140, May:150, Jun:160", ch: "[表格摘要 - 紙類] 一月:120, 二月:130, 三月:110, 四月:140, 五月:150, 六月:160" },
+          { en: "[Table Summary - Plastic] Jan:80, Feb:90, Mar:85, Apr:100, May:120, Jun:130", ch: "[表格摘要 - 塑膠] 一月:80, 二月:90, 三月:85, 四月:100, 五月:120, 六月:130" },
+          { en: "[Table Summary - Metal] Jan:30, Feb:28, Mar:35, Apr:40, May:45, Jun:50", ch: "[表格摘要 - 金屬] 一月:30, 二月:28, 三月:35, 四月:40, 五月:45, 六月:50" }
+        ]
+      },
+      p6: {
+        title: "閱讀測驗 (36-38) 提示工程與AI互動",
+        type: "reading",
+        content: [
+          { en: "Today, AI tools help with many tasks, from email to planning.", ch: "如今，AI工具協助完成許多任務，從處理電子郵件到規劃工作皆然。" },
+          { en: "To get good results from Large Language Models (LLMs), we need to know how to speak to them.", ch: "要從大型語言模型(LLMs)獲得良好結果，我們需要知道如何與它們對話。" },
+          { en: "This skill is called prompt engineering. It means giving clear and useful directions so that the model can answer well.", ch: "這項技能稱為「提示工程」，意指提供清晰且有幫助的指令，好讓模型能夠回答得當。" },
+          { en: "Think of yourself as a guide who leads the model toward helpful and correct results.", ch: "把自己想像成一位引路人，引導模型產生有幫助且正確的結果。" },
+          { en: "Many people follow simple steps for prompts that fit Google's best practices. You can remember five steps.", ch: "許多人會依循符合Google最佳實務的簡單提示詞步驟。你可以記住五個步驟。" },
+          { en: "First, set a clear task. You may assign a role and define the intended audience.", ch: "第一，設定明確的任務。可以指派角色並界定預期的受眾。" },
+          { en: "Second, add enough context, such as relevant background information.", ch: "第二，加入足夠的脈絡，例如相關背景資訊。" },
+          { en: "Third, include examples or references if you have them.", ch: "第三，如有範例或參考資料，就把它們納入。" },
+          { en: "Fourth, add output limits or structure, like a list, table, or steps, so the answer stays on track.", ch: "第四，加入輸出限制或結構，例如列表、表格或步驟，以便讓回答不離題。" },
+          { en: "Fifth, check the result and improve it—review, revise, and try again.", ch: "第五，檢查結果並改進——審閱、修訂，再嘗試一次。" },
+          { en: "Even with a strong prompt, LLMs can still make serious mistakes.", ch: "即便提示詞很強，大型語言模型仍可能犯下嚴重錯誤。" },
+          { en: "At times they may speak with great confidence and give long answers that include names, dates, or numbers that do not exist.", ch: "有時它們會非常自信地給出冗長的回答，包含不存在的人名、日期或數字。" },
+          { en: "This risk is called hallucination.", ch: "這種風險稱為「幻覺」。" },
+          { en: "When it happens, the writing may look smooth and sound true, but the key facts are wrong.", ch: "當它發生時，文字看起來流暢、聽起來也似乎正確，但關鍵事實卻是錯的。" },
+          { en: "To lower this risk, keep a human in the loop. Read the output with care. Check facts and fairness.", ch: "為了降低這個風險，務必讓人類留在流程中。仔細閱讀輸出內容，檢查事實與公平性。" },
+          { en: "If needed, ask the model to show sources or to explain the steps it used.", ch: "必要時，要求模型提供來源，或解釋它採用的步驟。" },
+          { en: "If the answer has wrong facts, missing steps, or sentences that are not clear, change the prompt.", ch: "若答案出現錯誤事實、缺少步驟，或句子不清楚，就調整提示詞。" },
+          { en: "Add needed details, cut extra words, or break the job into smaller steps. Then test again.", ch: "補上必要細節、刪去贅詞，或把工作拆成較小的步驟。然後再測一次。" },
+          { en: "By working in this way, we guide AI to meet real needs in a safe and useful way at school, at work, and beyond.", ch: "以這種方式工作，我們便能在學校、職場與更廣的場域，引導AI以安全且有用的方式滿足真實需求。" }
+        ]
+      },
+      p7: {
+        title: "閱讀測驗 (39-42) 導演 Sean Baker",
+        type: "reading",
+        content: [
+          { en: "Sean Baker is known for small crews, real locations, and a warm eye for people who live on the edge of big cities.", ch: "尚恩·貝克以小規模團隊、實景拍攝，以及對住在大城市邊緣人物的溫暖凝視而聞名。" },
+          { en: "In 2015, he made Tangerine with iPhones.", ch: "2015年，他以iPhone拍成《夜晚還年輕》。" },
+          { en: "The choice of using the cell phone was not a trick; it let him move fast, stay close to the street, and keep the budget low.", ch: "這個使用手機的選擇並非噱頭；這讓他行動更敏捷、貼近街頭，並壓低預算。" },
+          { en: "The film's raw light, quick pace, and honest talk gave audiences a fresh look at daily life.", ch: "片中質樸的光影、明快的節奏與坦率的對話，為觀眾帶來觀看日常的新鮮視角。" },
+          { en: "Reviews praised its energy and the care he showed for his characters.", ch: "評論稱讚它的活力，以及導演對角色的體貼關懷。" },
+          { en: "That year marked the start of a path from an independent corner to the world stage.", ch: "那一年，也成為他從獨立電影一隅邁向國際舞臺的起點。" },
+          { en: "In May 2017, his next film, The Florida Project, was shown at the Cannes Directors' Fortnight.", ch: "2017年5月，他的下一部作品《歡迎光臨奇幻城堡》於坎城導演雙週放映。" },
+          { en: "The story follows a lively child and her young mother who live near a theme park and a wide road lined with bright signs and cheap hotels.", ch: "故事講述一名活潑的孩子與年輕母親，住在一個主題樂園和一條寬闊道路的附近，那條路上林立著明亮的招牌與廉價旅館。" },
+          { en: "The camera stays at the child's eye level, so common scenes such as a small store, a purple wall, and a tiny room feel new and full of color.", ch: "鏡頭始終維持在孩子的視線高度，於是小商店、紫色外牆、狹小房間等尋常景物，都顯得新鮮而色彩飽滿。" },
+          { en: "Critics said the film was playful yet painful; many also called it a gentle but clear look at poverty and hope.", ch: "評論家認為本片既輕鬆幽默卻又令人感傷；許多人也稱其為對貧窮與希望溫柔而清澈的凝視。" },
+          { en: "Strong word of mouth pushed Baker into the center of film talk that year.", ch: "強勁口碑讓貝克成為當年影壇討論的焦點。" },
+          { en: "In July 2021, Red Rocket entered the main competition at Cannes.", ch: "2021年7月，《火紅大箭男》入選坎城影展主競賽。" },
+          { en: "Set in a small town, it mixes humor with trouble and shows a man who goes back home and tries to begin again.", ch: "影片以小鎮為背景，在幽默與困境之間穿梭，刻畫一名男子返鄉並嘗試重新開始。" },
+          { en: "The film proved that Baker could keep his simple style and still grow as a director.", ch: "這部作品證明，貝克既能維持其簡潔樸實的風格，也持續作為導演而成長。" },
+          { en: "On March 2, 2025, he made history with Anora.", ch: "2025年3月2日，他憑《艾諾拉》創下歷史。" },
+          { en: "He became the first person to win four Oscars for the same film, including Best Picture, Best Director, Best Film Editing, and Best Original Screenplay.", ch: "他成為第一位因同部單一電影奪下四座奧斯卡大獎的人，包含最佳電影、最佳導演、最佳剪輯、最佳原創劇本。" },
+          { en: "From a phone to the biggest prize, Baker's steady work shows how clear vision and brave choices can guide a filmmaker across many years.", ch: "從手機到最大獎，貝克持續的耕耘顯示，明確的視野與勇敢的抉擇，能引領電影人跨越多年歲月。" }
+        ]
+      }
+    };
+
+    const questions = [
+      {
+        id: 1, type: "vocabulary",
+        text: { en: "The students were reminded to carefully _____ their essays for **possible mistakes** **before handing them in**.", ch: "學生們被提醒在**繳交**作文**前**，先仔細校訂**可能的錯誤**。" },
+        options: [
+          { en: "(A) skip", ch: "略過", isCorrect: false }, { en: "(B) ruin", ch: "毀掉", isCorrect: false },
+          { en: "(C) erase", ch: "刪除", isCorrect: false }, { en: "(D) edit", ch: "校訂", isCorrect: true }
+        ],
+        explanation: "情境線索抓取：題幹的關鍵情境線索為**「possible mistakes（可能的錯誤）」**與**「before handing them in（繳交前）」**。因為看到需要處理潛在的錯誤並準備繳交作業，可以推論空格狀態為「修改、檢查」的動作。故選 (D) edit。陷阱提醒：選項 (C) erase 雖然有消除之意，但通常指物理上的擦拭或抹除，處理作文內容錯誤更適合使用 edit (編輯/校對)。"
+      },
+      {
+        id: 2, type: "vocabulary",
+        text: { en: "The new government policy places more stress on the protection of the **natural** _____ **around the island**.", ch: "新政府的政策更加重視**全島自然**環境的保護。" },
+        options: [
+          { en: "(A) environment", ch: "環境", isCorrect: true }, { en: "(B) memory", ch: "記憶", isCorrect: false },
+          { en: "(C) description", ch: "描述", isCorrect: false }, { en: "(D) victory", ch: "勝利", isCorrect: false }
+        ],
+        explanation: "同義字替換與搭配詞：本題的關鍵搭配詞為**「natural（自然的）」**，且後方提到**「around the island（全島）」**。自然保護的對象通常為環境，常見的搭配詞即為 natural environment（自然環境），因此選擇 (A) environment。"
+      },
+      {
+        id: 3, type: "vocabulary",
+        text: { en: "Many families choose to live in a **quiet** _____ **village** **far away from the urban noise** and busy traffic.", ch: "許多家庭選擇住在**遠離城市喧鬧**與繁忙車流的**寧靜**鄉村**村莊**。" },
+        options: [
+          { en: "(A) emotional", ch: "情緒化的", isCorrect: false }, { en: "(B) critical", ch: "危急的,批判的", isCorrect: false },
+          { en: "(C) rural", ch: "鄉村的", isCorrect: true }, { en: "(D) logical", ch: "合乎邏輯的", isCorrect: false }
+        ],
+        explanation: "情境線索抓取：關鍵線索為**「quiet ... village（寧靜的...村莊）」**與**「far away from the urban noise（遠離城市喧鬧）」**。因為看到與城市（urban）相對立的寧靜村莊，推論空格應填入「鄉村的」，故選 (C) rural。"
+      },
+      {
+        id: 4, type: "vocabulary",
+        text: { en: "The little boy was so _____ by the **magician's performance** that he **couldn't stop clapping and laughing**.", ch: "小男孩對**魔術師的表演**感到驚訝，以致於他一直**拍手大笑、停不下來**。" },
+        options: [
+          { en: "(A) annoyed", ch: "感到惱火的", isCorrect: false }, { en: "(B) ashamed", ch: "感到羞愧的", isCorrect: false },
+          { en: "(C) amazed", ch: "驚訝不已的", isCorrect: true }, { en: "(D) admired", ch: "受人敬佩的", isCorrect: false }
+        ],
+        explanation: "情境線索抓取：關鍵線索為**「magician's performance（魔術師的表演）」**以及結果**「couldn't stop clapping and laughing（拍手大笑停不下來）」**。因為看到這種積極正向的反應，推論空格狀態為「感到驚奇、驚訝的」，故選 (C) amazed。"
+      },
+      {
+        id: 5, type: "vocabulary",
+        text: { en: "The east of the island was _____ damaged by the **powerful earthquake**, which **caused many houses to collapse**.", ch: "這座島嶼東部被**強烈地震**嚴重損壞，**造成許多房子倒塌**。" },
+        options: [
+          { en: "(A) reasonably", ch: "合理地", isCorrect: false }, { en: "(B) efficiently", ch: "有效率地", isCorrect: false },
+          { en: "(C) courageously", ch: "勇敢地", isCorrect: false }, { en: "(D) severely", ch: "嚴重地", isCorrect: true }
+        ],
+        explanation: "同義字替換與搭配詞：關鍵線索為**「powerful earthquake（強烈地震）」**與**「caused many houses to collapse（導致許多房屋倒塌）」**。修飾損害程度極大，最常見的情境副詞搭配為 severely damaged（嚴重受損），故選 (D) severely。"
+      },
+      {
+        id: 6, type: "vocabulary",
+        text: { en: "After several weeks of investigation, the **police** finally collected enough _____ to **prove** that the suspect was **guilty**.", ch: "經過數週調查後，**警方**終於蒐集到足夠的證據來**證明**嫌犯**有罪**。" },
+        options: [
+          { en: "(A) evidence", ch: "證據", isCorrect: true }, { en: "(B) approval", ch: "核准", isCorrect: false },
+          { en: "(C) management", ch: "管理", isCorrect: false }, { en: "(D) committee", ch: "委員會", isCorrect: false }
+        ],
+        explanation: "情境線索抓取：關鍵線索為**「police（警方）」**、**「prove（證明）」**與**「guilty（有罪）」**。因為看到警方需要證明嫌犯有罪，推論空格必須是「證據」，故選 (A) evidence。"
+      },
+      {
+        id: 7, type: "vocabulary",
+        text: { en: "This online course is highly _____ as it **gives learners essential knowledge** along with **practical skills** for their future.", ch: "這門線上課程相當有教育意義，因為它**提供學習者**未來所需的**基本知識**與**實用技能**。" },
+        options: [
+          { en: "(A) political", ch: "政治性的", isCorrect: false }, { en: "(B) aggressive", ch: "侵略的", isCorrect: false },
+          { en: "(C) doubtful", ch: "令人存疑的", isCorrect: false }, { en: "(D) educational", ch: "有教育意義的", isCorrect: true }
+        ],
+        explanation: "情境線索抓取：關鍵線索為後方的原因子句**「gives learners essential knowledge（給予學習者必備知識）」**與**「practical skills（實用技能）」**。因為看到能提供知識與技能，推論該課程的屬性為「有教育意義的」，故選 (D) educational。"
+      },
+      {
+        id: 8, type: "vocabulary",
+        text: { en: "To reduce the serious problem of air pollution, the city government decided to **strictly** _____ **new laws** on factories.", ch: "為了減少嚴重的空氣污染問題，市政府決定對工廠**嚴格**執行**新法規**。" },
+        options: [
+          { en: "(A) expand", ch: "擴大", isCorrect: false }, { en: "(B) enforce", ch: "執行", isCorrect: true },
+          { en: "(C) survive", ch: "存活", isCorrect: false }, { en: "(D) acquire", ch: "取得", isCorrect: false }
+        ],
+        explanation: "同義字替換與搭配詞：關鍵線索為**「strictly（嚴格地）」**與**「new laws（新法規）」**。與法律搭配的常見動詞片語為 enforce laws（執法/執行法律），故選 (B) enforce。"
+      },
+      {
+        id: 9, type: "vocabulary",
+        text: { en: "To **avoid distractions**, the school **forbids** students from using cell phones during class hours.", ch: "為了**避免分心**，這所學校**禁止**學生於上課時間使用手機。" },
+        options: [
+          { en: "(A) promotes", ch: "促進", isCorrect: false }, { en: "(B) proceeds", ch: "繼續進行", isCorrect: false },
+          { en: "(C) prohibits", ch: "禁止", isCorrect: true }, { en: "(D) protests", ch: "抗議", isCorrect: false }
+        ],
+        explanation: "同義字替換與搭配詞：劃底線字詞為 **forbids（禁止）**。搭配情境為**「avoid distractions（避免分心）」**與限制手機使用。forbid 的同義字為 prohibit，且兩者常搭配句型 forbid/prohibit sb. from V-ing，故選 (C) prohibits。"
+      },
+      {
+        id: 10, type: "vocabulary",
+        text: { en: "When Tom slipped on the wet floor, his friends ran to help him **immediately**, and the teacher called for medical assistance.", ch: "湯姆在溼滑的地板上滑倒時，他的朋友們立刻跑過去幫他，老師也隨即聯絡醫療協助。" },
+        options: [
+          { en: "(A) by accident", ch: "意外地", isCorrect: false }, { en: "(B) over time", ch: "隨著時間", isCorrect: false },
+          { en: "(C) in public", ch: "公開地", isCorrect: false }, { en: "(D) right away", ch: "立刻；馬上", isCorrect: true }
+        ],
+        explanation: "同義字替換與搭配詞：劃底線字詞為 **immediately（立刻、馬上）**。面對滑倒受傷的緊急情況，朋友們的反應是「立刻」幫忙。其同義字片語為 right away，故選 (D) right away。"
+      },
+      {
+        id: 11, type: "dialogue",
+        text: { en: "Mandy: We're doing a short radio play. Do you want to read some lines for us?\nZoe: Actually, I've been practicing reading lines lately, and I think I'd do great.\nMandy: Awesome. That's exactly what we need. Are you in?\nZoe: ____ **I'll start getting ready tonight.**", ch: "曼蒂：我們要做一段短篇廣播劇。你願意幫我們念幾句臺詞嗎？\n佐伊：其實我最近一直在練習念臺詞，我覺得我可以表現得很好。\n曼蒂：太棒了！這正是我們需要的。你要加入嗎？\n佐伊：____ **我今晚就開始準備。**" },
+        options: [
+          { en: "(A) No, thanks. I'm not interested this time.", ch: "不用了，謝謝，這次我沒興趣。", isCorrect: false },
+          { en: "(B) Sure, I'd love to join and help with this.", ch: "當然，我很樂意加入幫忙。", isCorrect: true },
+          { en: "(C) I'd rather take part in the art club than do this.", ch: "我寧可參加美術社，也不想做這個。", isCorrect: false },
+          { en: "(D) Maybe, but I want to ask others first.", ch: "也許吧，但我想先問問其他人。", isCorrect: false }
+        ],
+        explanation: "情境標籤：校園活動/社團邀請。使用推論：解析時先看空格的後一句，佐伊說**「I'll start getting ready tonight.（我今晚就開始準備。）」**。從這個「積極準備」的具體細節，可反向推論空格處必定是「爽快答應」的語氣。選項 (B) 完全符合此熱情同意的語境。"
+      },
+      {
+        id: 12, type: "dialogue",
+        text: { en: "Clerk: Our sign says \"No pets.\" and we usually don't allow animals inside.\nIris: This is my guide dog. The law allows him to be with me.\nClerk: I sincerely apologize. **You're welcome to come in.**\nIris: ____ Thank you. It's good to know he's welcome here.", ch: "店員：我們的告示寫著「禁止攜帶寵物」，通常不允許動物進入。\n愛莉絲：這是我的導盲犬。法律允許牠陪同我。\n店員：我很誠摯地道歉，**歡迎進來。**\n愛莉絲：____ 謝謝。知道這裡歡迎牠，我很高興。" },
+        options: [
+          { en: "(A) I'll come in with him and find a place to sit.", ch: "我會帶牠一起進去，找個位子坐。", isCorrect: true },
+          { en: "(B) We'll leave right now and look for another place.", ch: "我們現在就離開，去找別的地方。", isCorrect: false },
+          { en: "(C) I'll take him back to the car and leave him there.", ch: "我把牠帶回車上，把牠留在那裡。", isCorrect: false },
+          { en: "(D) We'll wait outside until we are admitted.", ch: "我們會一直在外面等到能進去為止。", isCorrect: false }
+        ],
+        explanation: "情境標籤：日常消費/身障權益。使用推論：店員已經道歉並說**「You're welcome to come in.（歡迎進來）」**，愛莉絲也表達了感謝。順著這個友善的語氣，下一步動作自然是「帶著導盲犬入座」，故選 (A)。"
+      },
+      {
+        id: 13, type: "dialogue",
+        text: { en: "Park Staff: Please stay on the marked paths, so the plants won't be harmed.\nPeter: I just want to take a close picture of that rare flower. Can I step off the path for a moment?\nPark Staff: ____ **It hurts the plants and breaks the park rules.**\nPeter: Oh, I understand. I'll stay on the path and take the picture from here.", ch: "園區人員：請走在標示的步道上，以免傷害植物。\n彼得：我只是想近距離拍那朵稀有的花。我可以暫時離開步道一下嗎？\n園區人員：____ **這樣會傷害植物，也違反園區規定。**\n彼得：哦，我明白了。我會待在步道上，從這裡拍照。" },
+        options: [
+          { en: "(A) No, please don't leave the path.", ch: "不行，請不要離開步道。", isCorrect: true },
+          { en: "(B) Sure, but only for a quick picture.", ch: "當然可以，但只能快速拍一下。", isCorrect: false },
+          { en: "(C) Just be careful. Nothing will happen.", ch: "小心一點就好，不會有事的。", isCorrect: false },
+          { en: "(D) You can go if no one is watching.", ch: "如果沒有人在看，你可以過去。", isCorrect: false }
+        ],
+        explanation: "情境標籤：社會環保/公共規定。使用推論：觀察空格後園區人員的理由**「It hurts the plants and breaks the park rules.（會傷害植物且違規）」**。從這個嚴厲拒絕的細節，可反向推論空格處必定是「直接說不行」，故選 (A)。"
+      },
+      {
+        id: 14, type: "dialogue",
+        text: { en: "Kevin: I'm planning to post our club performance video on Instagram tomorrow.\nAnna: Did everyone say it's okay to share? It shows their faces, so we should be careful.\nKevin: You're right. I was too excited to ask others first.\nAnna: ____\nKevin: Sure, **it's better to ask before we put it online.**", ch: "凱文：我打算明天把我們社團表演影片發佈到Instagram。\n安娜：大家都有同意分享嗎？影片有拍到他們的臉，我們應該小心一點。\n凱文：你說得對，我剛剛太興奮了，沒有先問。\n安娜：____\n凱文：好，**先問過再放上網比較好。**" },
+        options: [
+          { en: "(A) What if we post it first and ask them later?", ch: "不然我們先貼出來，再事後問他們怎麼樣？", isCorrect: false },
+          { en: "(B) How about sending it only to one friend then?", ch: "那只傳給一位朋友就好，如何？", isCorrect: false },
+          { en: "(C) Why don't we add music to make it more fun?", ch: "要不要加點音樂，讓影片更有趣？", isCorrect: false },
+          { en: "(D) Why don't we ask them first or hide their faces?", ch: "要不要先問過大家，或把他們的臉遮住？", isCorrect: true }
+        ],
+        explanation: "情境標籤：科技時事/網路隱私。使用推論：Kevin 承認自己忘記先徵求同意，Anna 必須給出一個解決方案。Kevin 後面回覆**「it's better to ask before we put it online（先問過再放上網比較好）」**，反向推論 Anna 的提議必定包含「先詢問」或「遮住臉保密」，故選 (D)。"
+      },
+      {
+        id: 15, type: "dialogue",
+        text: { en: "Mom: Grandma's coming on Saturday, and the house is really messy. We need to clean it up.\nLily: I can sweep the floor, wipe the tables, and make the beds.\nMom: Thanks. Tom can take out the trash and wash the dishes after dinner.\nLily: ____ **I really want the house to look nice for Grandma.**", ch: "媽媽：阿嬤星期六要來，家裡很亂，我們得好好打掃一下。\n莉莉：我可以掃地、擦桌子，還有整理床鋪。\n媽媽：謝謝妳。晚餐後湯姆可以去倒垃圾和洗碗。\n莉莉：____ **我真的很希望阿嬤來時，家裡看起來很棒。**" },
+        options: [
+          { en: "(A) I'll skip my part and let Tom do everything.", ch: "我就不做我的部分，讓湯姆全部做。", isCorrect: false },
+          { en: "(B) I'll do my part tonight, so the house is ready for her.", ch: "我今晚把我該做的做好，這樣家裡就準備好迎接她了。", isCorrect: true },
+          { en: "(C) Let's tell Grandma not to come over, so we don't have to clean.", ch: "我們跟阿嬤說不要過來好了，這樣就不用打掃。", isCorrect: false },
+          { en: "(D) I won't do anything because Grandma won't notice the mess.", ch: "我什麼都不做，因為阿嬤不會注意到這些凌亂。", isCorrect: false }
+        ],
+        explanation: "情境標籤：家庭日常/家務分工。使用推論：看空格後方 Lily 的語氣：**「I really want the house to look nice for Grandma.（我真希望家裡看起來很棒）」**。這展現了她積極打掃的態度，因此推論她會主動完成自己的份內工作，故選 (B)。"
+      },
+      {
+        id: 16, type: "dialogue",
+        text: { en: "Ms. Wu: Earthquake alert. Drop, get under the desk, cover your head, and hold on.\nBen: It's shaking hard. Should we run downstairs now or stay here until it's over?\nMs. Wu: Stay until it stops. Moving now is dangerous because things could fall at any time.\nBen: Got it. ____\nMs. Wu: **Yes. Leave only when it's safe. Avoid using the elevator** and always stay calm.", ch: "吳老師：地震警報！趴下、躲到桌下、遮住頭部，並抓穩。\n班恩：搖得很大。我們現在要不要往樓下跑，還是待在這裡等到結束？\n吳老師：待在原地，等地震停。現在移動很危險，東西隨時可能會掉下來。\n班恩：知道了。____\n吳老師：**對。只有在安全時才離開。避免搭乘電梯**，並且隨時保持冷靜。" },
+        options: [
+          { en: "(A) Should we jump out of the window to escape faster?", ch: "為了逃得快一點，我們應該跳窗嗎？", isCorrect: false },
+          { en: "(B) Should we climb to the roof and wait for rescue there?", ch: "我們應該爬到頂樓，在那裡等待救援嗎？", isCorrect: false },
+          { en: "(C) Should we use the stairs and help others when we leave?", ch: "我們離開時，應該走樓梯並協助其他人嗎？", isCorrect: true },
+          { en: "(D) Should we open the windows and shout before we go out?", ch: "在我們出去之前，應該先打開窗戶大叫嗎？", isCorrect: false }
+        ],
+        explanation: "情境標籤：校園安全/防災演練。使用推論：空格後 Ms. Wu 回答**「Yes... Avoid using the elevator（對...避免搭電梯）」**。針對「不搭電梯」的反向推論，Ben 的提問必然是關於「離開時是否該走樓梯」，故選 (C)。"
+      },
+      {
+        id: 17, type: "dialogue",
+        text: { en: "Mia: Someone left a wallet on this bench. It has cash, a student ID, and one EasyCard inside.\nJack: That's not ours. What should we do with it?\nMia: I'm not sure. Maybe we can try to find the owner ourselves.\nJack: That might be hard. ____\nMia: Great. **Let's bring it to the school office right now.**", ch: "米亞：有人把皮夾落在這張長椅上。裡面有現金、學生證，還有一張悠遊卡。\n傑克：又不是我們的。我們該怎麼處理？\n米亞：我不太確定，也許我們可以自己試著找失主。\n傑克：那可能很難。____\n米亞：太好了。**我們現在就把它帶到學校辦公室。**" },
+        options: [
+          { en: "(A) How about we wait until later today to decide what to do with it?", ch: "我們今天晚一點再決定要怎麼處理，好嗎？", isCorrect: false },
+          { en: "(B) What if we ask a few people nearby if they lost a wallet like this?", ch: "要不要問問附近幾個人，看有沒有人掉了這種皮夾？", isCorrect: false },
+          { en: "(C) Why should we stay right here all day and hope someone returns for it?", ch: "我們為什麼要在這裡待一整天，指望有人回來找？", isCorrect: false },
+          { en: "(D) How about we take it to the school office and have the school handle it now?", ch: "不然我們現在把它拿到學校辦公室，請學校處理，怎麼樣？", isCorrect: true }
+        ],
+        explanation: "情境標籤：校園日常/失物招領。使用推論：空格後 Mia 同意並附和**「Let's bring it to the school office right now.（我們現在就把它帶到學校辦公室）」**，由此直接對應 Jack 必定是提出了「送到學校辦公室」的建議，故選 (D)。"
+      },
+      {
+        id: 18, type: "dialogue",
+        text: { en: "Ms. Chen: Our electric bill is too high. The air conditioner is set too low, and it runs too long every day.\nRay: I enjoy how nice and cool it feels, but since we're spending too much on the electric bill, we really need to cut back.\nMs. Chen: Can you think of ways to **save energy**?\nRay: ____\nMs. Chen: Good idea, Ray. Thanks for helping the class save power and money.", ch: "陳老師：我們的電費太高了。冷氣溫度設得太低，而且每天開得太久。\n雷：我很喜歡這種涼爽舒適的感覺，但既然我們的電費花太多了，真的得節省用電。\n陳老師：你想得到什麼方法能幫助**節省能源**嗎？\n雷：____\n陳老師：好主意，雷。謝謝你幫忙班級節電跟省錢。" },
+        options: [
+          { en: "(A) Does it make any sense to open the windows while the air conditioner is on?", ch: "開冷氣的時候打開窗戶合理嗎？", isCorrect: false },
+          { en: "(B) We can set the air conditioner to 27 degrees Celsius and use fans to circulate the air.", ch: "我們可以將冷氣設在攝氏27度及使用電扇來讓空氣循環。", isCorrect: true },
+          { en: "(C) Can we keep the air conditioner on all day to keep the room cool?", ch: "我們可不可以整天都開著冷氣，讓教室一直很涼？", isCorrect: false },
+          { en: "(D) Leaving the air conditioner on overnight keeps the room cool.", ch: "把冷氣整晚都開著可以讓教室維持涼爽。", isCorrect: false }
+        ],
+        explanation: "情境標籤：社會環保/節能減碳。使用推論：Ms. Chen 詢問如何**「save energy（節省能源）」**，Ray 必須提出具體且正確的節能方法。選項中只有 (B) 將冷氣調高並搭配電扇是具建設性的節能提議。"
+      },
+      {
+        id: 19, type: "dialogue",
+        text: { en: "Sam: I found a song online. It would be great for our video.\nEmma: The song belongs to someone else.\nSam: Oh, I didn't think of that. Using it might be easy, but I'm **not sure whether it's right**.\nEmma: ____ Then we should **ask for permission** or find a free song.", ch: "山姆：我在網路上找到一首歌，用在我們的影片應該很棒。\n艾瑪：那首歌是別人的作品。\n山姆：喔，我沒想到這點。用起來也許很容易，但我**不太確定這樣是否正確**。\n艾瑪：____ 那我們應該先**取得授權**，或改找可免費使用的歌曲。" },
+        options: [
+          { en: "(A) Maybe we can just take it and use it quickly.", ch: "也許我們可以直接拿來快速使用。", isCorrect: false },
+          { en: "(B) So we may need to consider copyright issues.", ch: "所以我們可能需要考慮版權問題。", isCorrect: true },
+          { en: "(C) Nobody will care if we use it for only a small project.", ch: "如果我們只用在一個小專案上，沒有人會在意。", isCorrect: false },
+          { en: "(D) It's fine as long as we say where we got the song.", ch: "只要我們說明這首歌的來源就沒問題。", isCorrect: false }
+        ],
+        explanation: "情境標籤：科技時事/智慧財產權。使用推論：Sam 意識到隨便用別人的歌可能不對**（not sure whether it's right）**，接著 Emma 提議**「ask for permission（取得授權）」**。這表示他們正在討論「版權（copyright）」的阻礙，故選 (B)。"
+      },
+      {
+        id: 20, type: "dialogue",
+        text: { en: "Host Mom: Our guest, Alia, from India will arrive tonight. I want her to **feel comfortable** at dinner.\nAnna: Some people don't eat beef for religious or health reasons.\nHost Mom: Good point. We should learn what she can eat so that she can feel at home.\nAnna: ____ I'll **check** what foods she likes before we order.", ch: "寄宿家庭媽媽：我們來自印度的客人阿莉雅今晚會到。我希望她在吃晚餐時能**感到自在**。\n安娜：有些人因為宗教或健康因素不吃牛肉。\n寄宿家庭媽媽：說得好。我們應該先了解她能吃什麼，這樣才能讓她感到賓至如歸。\n安娜：____ 我會先**確認**她喜歡什麼食物再點餐。" },
+        options: [
+          { en: "(A) Asking first can help us avoid mistakes.", ch: "先問清楚可以幫我們避免出錯。", isCorrect: true },
+          { en: "(B) We should just order what we always eat.", ch: "就照我們平常吃的點就好了。", isCorrect: false },
+          { en: "(C) We should serve steak because everyone likes it.", ch: "大家都喜歡，所以我們就上牛排吧。", isCorrect: false },
+          { en: "(D) She can simply pick another dish if she wants.", ch: "她想要的話，就自己另外選一道菜就好。", isCorrect: false }
+        ],
+        explanation: "情境標籤：日常交流/文化尊重。使用推論：Anna 表示她會在點餐前**「先確認（check）」**，這個行動的目的就是為了呼應媽媽稍早說的**「讓她感到自在」**，因此 Anna 的結論是「先問清楚能避免犯錯」，符合上下文邏輯，故選 (A)。"
+      },
+
+      {
+        id: 21, type: "cloze", passageRef: "p1",
+        text: { en: "_____ **climate change is making** these events more frequent and intense.", ch: "____ **氣候變遷使這些事件變得**更為頻繁且強烈。" },
+        options: [
+          { en: "(A) It is clear that", ch: "顯然地", isCorrect: true }, { en: "(B) It is necessary to", ch: "……是必須的", isCorrect: false },
+          { en: "(C) There appears to be", ch: "似乎有", isCorrect: false }, { en: "(D) There is no chance that", ch: "……是不可能的", isCorrect: false }
+        ],
+        explanation: "文法與語境分析：本題測驗句意與文法判斷。觀察空格後方，為一個完整的子句**「climate change is making...」**。選項 (B) It is necessary to 與 (C) There appears to 後面必須接原形動詞，文法結構不符。選項 (D) 語意為「不可能...」，與前後文描述極端天氣增加的語境衝突。因此選 (A) It is clear that（顯然地），符合文法且能順暢銜接天氣變遷造成極端事件的因果語境。"
+      },
+      {
+        id: 22, type: "cloze", passageRef: "p1",
+        text: { en: "...with **some areas** _____ **over 2000mm of rain**.", ch: "...**部分地區** _____ **逾2,000毫米**。" },
+        options: [
+          { en: "(A) receiving", ch: "接收 (V-ing)", isCorrect: true }, { en: "(B) received", ch: "接收 (V-ed)", isCorrect: false },
+          { en: "(C) receive", ch: "接收 (原形)", isCorrect: false }, { en: "(D) receives", ch: "接收 (單數)", isCorrect: false }
+        ],
+        explanation: "文法與語境分析：本題測驗「with 附帶狀態片語」：**with + 受詞 (some areas) + 受詞補語**。由於「地區 (areas)」與「接收/累積 (receive) 雨量」之間為「主動」關係，必須使用現在分詞 (V-ing)，故選 (A) receiving。"
+      },
+      {
+        id: 23, type: "cloze", passageRef: "p1",
+        text: { en: "Specifically, **building \"Sponge City\"** _____ roads soak up rainwater.", ch: "具體來說，**打造「海綿城市」** _____ 有助於道路吸納雨水。" },
+        options: [
+          { en: "(A) help", ch: "幫助", isCorrect: false }, { en: "(B) helping", ch: "幫助", isCorrect: false },
+          { en: "(C) helps", ch: "幫助 (單數)", isCorrect: true }, { en: "(D) helped", ch: "幫助 (過去式)", isCorrect: false }
+        ],
+        explanation: "文法與語境分析：本題主詞為動名詞片語**「building \"Sponge City\"（打造海綿城市）」**，視為「第三人稱單數」。且整篇文章在陳述客觀事實與常態性防洪策略，應使用「現在簡單式」，因此動詞需加 -s，故選 (C) helps。"
+      },
+      {
+        id: 24, type: "cloze", passageRef: "p1",
+        text: { en: "Unfortunately, _____ **these efforts**, a very big disaster might still happen...", ch: "不幸的是， _____ **這些努力**，大規模的災害在未來仍舊可能發生..." },
+        options: [
+          { en: "(A) although", ch: "雖然", isCorrect: false }, { en: "(B) because", ch: "因為", isCorrect: false },
+          { en: "(C) despite", ch: "儘管", isCorrect: true }, { en: "(D) without", ch: "沒有", isCorrect: false }
+        ],
+        explanation: "文法與語境分析：本題測驗轉折語。空格後方**「these efforts」**為名詞片語，因此必須填入介系詞。although 與 because 後方需接完整子句，故排除。語意上前後為讓步轉折關係（做了努力，儘管如此災害仍可能發生），故選 (C) despite。"
+      },
+      {
+        id: 25, type: "cloze", passageRef: "p2",
+        text: { en: "Medicare **provides health care** _____ **most Americans** aged 65 or older.", ch: "聯邦醫療保險為多數年滿65歲的美國人**提供醫療照護**。" },
+        options: [
+          { en: "(A) for", ch: "給", isCorrect: true }, { en: "(B) with", ch: "用", isCorrect: false },
+          { en: "(C) over", ch: "超過", isCorrect: false }, { en: "(D) in", ch: "在", isCorrect: false }
+        ],
+        explanation: "文法與語境分析：本題測驗動詞搭配介系詞。provide 的常見用法有兩種：**provide sb. with sth.** (提供某人某物) 或 **provide sth. for sb.** (提供某物給某人)。題幹結構為**「provides health care (事物) ___ Americans (人)」**，故必須填入 for，選 (A)。"
+      },
+      {
+        id: 26, type: "cloze", passageRef: "p2",
+        text: { en: "Many people find these gaps surprising and struggle with **high personal costs**. _____, Medicare only pays for **up to 100 days** of skilled care...", ch: "許多人對這些落差感到意外，並且為**高昂的個人成本**所苦。_____，聯邦醫療保險只支付**最長100天**護理之家的專業照護..." },
+        options: [
+          { en: "(A) In contrast", ch: "對比之下", isCorrect: false }, { en: "(B) For example", ch: "舉例來說", isCorrect: true },
+          { en: "(C) Without a doubt", ch: "毫無疑問", isCorrect: false }, { en: "(D) As a result", ch: "因此", isCorrect: false }
+        ],
+        explanation: "文法與語境分析：前一句提到人們為**「high personal costs（高昂個人成本）」**所苦。空格後方的句子具體列出了**「100天為限」**這個詳細的規範，用來佐證前方的觀點，邏輯關係為「舉例說明」，故選 (B) For example。"
+      },
+      {
+        id: 27, type: "cloze", passageRef: "p2",
+        text: { en: "For over 12 million **individuals**, _____ **by** both Medicare and Medicaid...", ch: "對超過1,200萬名同時 _____ 聯邦醫療保險與醫療補助計畫保障的**人**而言..." },
+        options: [
+          { en: "(A) covered", ch: "被保障", isCorrect: true }, { en: "(B) which are covered", ch: "被保障 (關代)", isCorrect: false },
+          { en: "(C) that were covered", ch: "被保障 (逗號後不用that)", isCorrect: false }, { en: "(D) who covered", ch: "主動保障", isCorrect: false }
+        ],
+        explanation: "文法與語境分析：本題測驗分詞構句修飾名詞。先行詞 **individuals（人）**與後方動詞 **cover（保障）**為「被動」關係（由後方的 by 可進一步確認）。原句應為 who are covered，省略關係代名詞 who 與 be 動詞後，留下過去分詞 (p.p.) 表示被動，故選 (A) covered。"
+      },
+      {
+        id: 28, type: "cloze", passageRef: "p2",
+        text: { en: "This support also offers _____ **important services** like long-term care...", ch: "這項支援也提供 _____ 取得**重要服務**的管道..." },
+        options: [
+          { en: "(A) sympathy for", ch: "對...的同情", isCorrect: false }, { en: "(B) control over", ch: "對...的控制", isCorrect: false },
+          { en: "(C) appetite for", ch: "對...的渴望", isCorrect: false }, { en: "(D) access to", ch: "取得...的管道", isCorrect: true }
+        ],
+        explanation: "文法與語境分析：本題測驗名詞片語搭配。語意為提供**「取得（醫療照護等）服務的管道或權利」**。access to 專門用來指「接近/使用...的機會或權利」，完全符合醫療資源的情境，故選 (D)。"
+      },
+
+      {
+        id: 29, type: "reading", passageRef: "p3",
+        text: { en: "Sammy borrowed a **magazine** from the Sunrise Branch on a Tuesday. The due date happens to be a **national holiday**. According to the rule, when should she return it?", ch: "薩米於週二在日出分館借了一本**雜誌**。恰好歸還日為**國定假日**。依規定她應該哪一天歸還？" },
+        options: [
+          { en: "(A) Monday", ch: "週一", isCorrect: false }, { en: "(B) Tuesday", ch: "週二", isCorrect: false },
+          { en: "(C) Wednesday", ch: "週三", isCorrect: true }, { en: "(D) Sunday", ch: "週日", isCorrect: false }
+        ],
+        explanation: "精準定位與條件交集點：本題為圖表非連續文本題。首先定位注意事項 1：**「雜誌借期7天 (Magazines 7 days)」**。薩米週二借出，預計下週二到期。接著定位注意事項 3 與 4 的交集：**「如到期日逢休館日,順延至下一個開館日」**且**「國定假日全館休館」**。時間軸推論 (Timeline)：1. 借出日：本週二。 2. 原訂到期日：下週二。 3. 特殊狀況：下週二遇國定假日，圖書館休館。 4. 依據日出分館 (Sunrise Branch) 的開館時間：**「Tue~Sun 08:00~18:00; Mon closed（週二至週日營業，週一休館）」**。下週二休館後的「下一個開館日」即為下週三。故選 (C)。"
+      },
+      {
+        id: 30, type: "reading", passageRef: "p3",
+        text: { en: "At Harbor Main Library, Mr. Wu returns items 2 days late: **1 book and 2 DVDs**. How much is the **late fee** in total?", ch: "在港灣總館，吳先生逾2天歸還：**1本書與2片DVD**。合計應繳多少**逾期罰金**？" },
+        options: [
+          { en: "(A) NT$12", ch: "12元", isCorrect: false }, { en: "(B) NT$14", ch: "14元", isCorrect: false },
+          { en: "(C) NT$24", ch: "24元", isCorrect: true }, { en: "(D) NT$26", ch: "26元", isCorrect: false }
+        ],
+        explanation: "精準定位與條件交集點：定位表格中**「逾期罰金 (Late Fee)」**。書籍為每日每件 2 元，DVD 為每日每件 5 元。數理計算：書籍：1 本 × 2 元 × 逾期 2 天 = 4 元。DVD：2 片 × 5 元 × 逾期 2 天 = 20 元。總計：4 + 20 = 24 元。故選 (C)。"
+      },
+      {
+        id: 31, type: "reading", passageRef: "p4",
+        text: { en: "It's Monday morning. Ben is only free in the **afternoons**. What's the earliest day he can see **Dr. Chen**, according to the table?", ch: "現在是星期一上午。班只有**下午**有空。依表格他最早可以在哪一天看**陳醫師**？" },
+        options: [
+          { en: "(A) Monday", ch: "星期一", isCorrect: false }, { en: "(B) Tuesday", ch: "星期二", isCorrect: true },
+          { en: "(C) Wednesday", ch: "星期三", isCorrect: false }, { en: "(D) Saturday", ch: "星期六", isCorrect: false }
+        ],
+        explanation: "精準定位與條件交集點：定位表格中**「Dr. Chen (眼科陳醫師)」**。門診日為**「Tue, Sat (星期二、六)」**，時段包含**「2:00~6:00 p.m. (下午)」**。現在是星期一，因此最快符合他「下午有空」條件的看診日是星期二。故選 (B)。"
+      },
+      {
+        id: 32, type: "reading", passageRef: "p4",
+        text: { en: "Ben checks Family Medicine online and sees **\"Full.\"** What should he do if he wants to make an appointment for his brother?", ch: "班上網查詢家醫科時看到**「額滿」**。如果他想幫弟弟掛號，該怎麼做？" },
+        options: [
+          { en: "(A) Send an email at night and wait for a reply the next day.", ch: "晚上寄電子郵件等回覆。", isCorrect: false },
+          { en: "(B) Go to the front desk 30 minutes early and take a number card.", ch: "提早30分鐘到櫃檯抽號碼牌。", isCorrect: true },
+          { en: "(C) Stay home and try online again at 3:00 p.m.", ch: "留在家裡下午3點再試線上掛號。", isCorrect: false },
+          { en: "(D) Call the hospital every 10 minutes and ask for an open spot.", ch: "每10分鐘打電話詢問名額。", isCorrect: false }
+        ],
+        explanation: "精準定位「判斷處」：定位到對話中 Amy 的說明：**「If it's full, please come 30 minutes early to the front desk to get a number card.（如果額滿,請提早30分鐘到櫃檯抽號碼牌。）」**直接對應選項 (B)。"
+      },
+      {
+        id: 33, type: "reading", passageRef: "p5",
+        text: { en: "Which of the following statements is true?", ch: "下列哪一個敘述是正確的？" },
+        options: [
+          { en: "(A) The amount of paper drops by 20 kg from February to March.", ch: "紙類回收量從二月到三月減少20公斤。", isCorrect: true },
+          { en: "(B) The amount of paper is the lowest in January among the three categories.", ch: "在一月，三類之中紙類的回收量最低。", isCorrect: false },
+          { en: "(C) The amount of metal is higher than that of plastic in June.", ch: "六月金屬回收量高於塑膠。", isCorrect: false },
+          { en: "(D) The amount of plastic falls by 10 kg from May to June.", ch: "塑膠回收量從五月到六月減少10公斤。", isCorrect: false }
+        ],
+        explanation: "題型專屬破解法 (逐一檢驗)：(A) **二月紙類 (130) 到三月紙類 (110)** ➜ 130 - 110 = 減少 20。此敘述正確。(B) 一月的紙類為 120，並非最低（金屬為 30 最低）。(C) 六月金屬 (50) 低於塑膠 (130)。(D) 五月塑膠 (120) 到六月塑膠 (130) ➜ 是增加 10，非減少。故選 (A)。"
+      },
+      {
+        id: 34, type: "reading", passageRef: "p5",
+        text: { en: "In April, paper accounts for _____ of the month's total recycling amount.", ch: "在四月，紙類佔該月總回收量的" },
+        options: [
+          { en: "(A) One third", ch: "三分之一", isCorrect: false }, { en: "(B) One half", ch: "二分之一", isCorrect: true },
+          { en: "(C) Two thirds", ch: "三分之二", isCorrect: false }, { en: "(D) Three fourths", ch: "四分之三", isCorrect: false }
+        ],
+        explanation: "精準定位與計算：定位表格四月份數據：**紙類 (140) + 塑膠 (100) + 金屬 (40) = 總計 280 公斤**。紙類 140 公斤佔總數 280 公斤的比例為 140/280 = 1/2（One half / 二分之一），故選 (B)。"
+      },
+      {
+        id: 35, type: "reading", passageRef: "p5",
+        text: { en: "Which of the following charts shows the data on the table correctly?", ch: "下列哪一個圖表正確呈現表中的數據？" },
+        options: [
+          { en: "(A) Line chart showing trends", ch: "顯示趨勢的折線圖", isCorrect: false },
+          { en: "(B) Pie chart of percentages", ch: "百分比圓餅圖", isCorrect: false },
+          { en: "(C) Total recycling line chart", ch: "總回收量折線圖", isCorrect: false },
+          { en: "(D) Bar chart of monthly recycling by category", ch: "各月分類回收量長條圖", isCorrect: true }
+        ],
+        explanation: "圖表/非連續文本題判斷：選項 (D) 長條圖正確分列了紙類、塑膠、金屬三種物質每月公斤數的消長。可以抽查三月份的數據核對：**紙類 110、塑膠 85、金屬 35**。只有圖表 (D) 的長條高度能完美吻合這組數據。故選 (D)。"
+      },
+      {
+        id: 36, type: "reading", passageRef: "p6",
+        text: { en: "What is the main purpose of this passage?", ch: "這篇文章的主旨是什麼？" },
+        options: [
+          { en: "(A) To explain inner design of AI models...", ch: "解釋AI模型的內部設計與其訓練流程", isCorrect: false },
+          { en: "(B) To give the history of LLMs...", ch: "提供大型語言模型的歷史與關鍵大事記", isCorrect: false },
+          { en: "(C) To present the five steps for prompting and the need to review results for error", ch: "介紹提示的五個步驟以及檢查結果錯誤的必要性", isCorrect: true },
+          { en: "(D) To claim AI can replace teachers...", ch: "宣稱AI能取代教師並永遠取消人工審查", isCorrect: false }
+        ],
+        explanation: "文章主旨判斷：文章第一段破題提到**「prompt engineering（提示工程）」**，第二段明確列出**「five steps（五個步驟）」**，第三與第四段探討了幻覺風險及**「keep a human in the loop... Check facts（人類需參與審查事實）」**。選項 (C) 完美囊括了這兩大核心段落的主軸。"
+      },
+      {
+        id: 37, type: "reading", passageRef: "p6",
+        text: { en: "In paragraph 3, what does the word \"hallucination\" most likely mean?", ch: "第三段中的「hallucination」最可能是什麼意思？" },
+        options: [
+          { en: "(A) A new feature that lets AI imagine...", ch: "讓AI發想創意故事的新功能", isCorrect: false },
+          { en: "(B) A convincing but inaccurate response with details that are not real", ch: "具說服力但不準確，且包含非真實細節的回應", isCorrect: true },
+          { en: "(C) A tool inside AI that checks truth...", ch: "AI內部用來查核真實性的工具", isCorrect: false },
+          { en: "(D) A short reply that skips details...", ch: "略過步驟但快速答題的簡短回覆", isCorrect: false }
+        ],
+        explanation: "精準定位「判斷處」：文章第三段提到，AI 會自信給出冗長回答，包含**「names, dates, or numbers that do not exist（不存在的人名或數字）」**，並定義此風險為「hallucination」。接著解釋它發生時**「the writing may look smooth and sound true, but the key facts are wrong（看起來流暢真實，但關鍵事實是錯的）」**。這完全對應選項 (B) 的描述。"
+      },
+      {
+        id: 38, type: "reading", passageRef: "p6",
+        text: { en: "Which of the following is NOT mentioned in the passage if you want to get good results while using AI models?", ch: "如果你想在使用AI模型時獲得比較好的結果，以下何者未在本文中提及？" },
+        options: [
+          { en: "(A) Add output limits or structure...", ch: "加入輸出限制或結構，之後再審閱修訂", isCorrect: false },
+          { en: "(B) Include examples or references...", ch: "納入範例或參考資料", isCorrect: false },
+          { en: "(C) Use images or charts to guide the model during generation every time.", ch: "每次在生成過程中都使用圖片或圖表來引導模型。", isCorrect: true },
+          { en: "(D) Give a clear task and format...", ch: "給出明確任務與格式並加入足夠脈絡", isCorrect: false }
+        ],
+        explanation: "細節 NOT true 題消去法：(A) 提及於第四、五步**「add output limits... review, revise」**。(B) 提及於第三步**「include examples」**與末段**「ask the model to show sources」**。(D) 提及於第一步**「set a clear task」**與第二步**「add enough context」**。唯獨 (C) 文章中完全沒有提到要使用「圖片或圖表 (images or charts)」來引導，故為正確答案。"
+      },
+      {
+        id: 39, type: "reading", passageRef: "p7",
+        text: { en: "What is the main idea of this passage?", ch: "這篇文章的主旨是什麼？" },
+        options: [
+          { en: "(A) How Sean Baker depicted life on the city's edges", ch: "尚恩·貝克如何描繪城市邊緣的生活", isCorrect: false },
+          { en: "(B) How Sean Baker first started filming with iPhones", ch: "尚恩·貝克最初如何開始用iPhone拍片", isCorrect: false },
+          { en: "(C) How Sean Baker created films focusing on children", ch: "尚恩·貝克如何創作以兒童為核心的電影", isCorrect: false },
+          { en: "(D) How Sean Baker rose from small films to global fame", ch: "尚恩·貝克如何從小成本作品走向享譽全球", isCorrect: true }
+        ],
+        explanation: "文章主旨判斷：文章按時間順序，從 2015 年他用 iPhone 拍小成本電影《夜晚還年輕》，一路寫到 2025 年他憑《艾諾拉》奪下四座奧斯卡大獎。首尾呼應段落的最後一句**「From a phone to the biggest prize（從手機到最大獎）」**，清楚點出他從小成本走向國際巔峰的歷程，故選 (D)。"
+      },
+      {
+        id: 40, type: "reading", passageRef: "p7",
+        text: { en: "Why did Sean Baker choose to film Tangerine with iPhones?", ch: "為何尚恩·貝克選擇用iPhone拍攝《夜晚還年輕》？" },
+        options: [
+          { en: "(A) To create a special effect...", ch: "為了創造像手機影像的特殊效果", isCorrect: false },
+          { en: "(B) To save money and stay flexible while filming on real city streets", ch: "為了省錢並在真實街頭拍攝時保持機動", isCorrect: true },
+          { en: "(C) To follow a new rule requiring digital filming...", ch: "為遵守數位拍攝新規定", isCorrect: false },
+          { en: "(D) To show that smartphones could completely replace regular cameras", ch: "為證明手機可完全取代一般攝影機", isCorrect: false }
+        ],
+        explanation: "精準定位「判斷處」：文章第一段明確指出使用手機的原因：**「it let him move fast, stay close to the street, and keep the budget low（這讓他行動更敏捷、貼近街頭，並壓低預算）」**。完美對應選項 (B) 的 save money (壓低預算) 與 stay flexible (機動敏捷)。"
+      },
+      {
+        id: 41, type: "reading", passageRef: "p7",
+        text: { en: "What lesson can be learned from Sean Baker's career?", ch: "從尚恩·貝克的職涯可以得到什麼啟示？" },
+        options: [
+          { en: "(A) Using large production crews is the best way...", ch: "使用龐大製作團隊是最佳方法。", isCorrect: false },
+          { en: "(B) Relying on technology will eventually limit true creativity...", ch: "依賴科技最終會限制創意。", isCorrect: false },
+          { en: "(C) Making award-winning films is the dream...", ch: "製作獲獎電影是每位電影人的夢想。", isCorrect: false },
+          { en: "(D) Having clear vision and making bold choices can lead to long-term success.", ch: "具備清晰願景並做出大膽選擇，能帶來長期成功。", isCorrect: true }
+        ],
+        explanation: "精準定位「判斷處」：通常這種推論總結題的答案都在文章最後一句。文章末尾寫道：**「clear vision and brave choices can guide a filmmaker across many years（明確的視野與勇敢的抉擇，能引領電影人跨越多年歲月）」**，直接對應選項 (D) 的 clear vision, bold choices 與 long-term success。"
+      },
+      {
+        id: 42, type: "reading", passageRef: "p7",
+        text: { en: "Based on the passage, arrange the following events in the order in which they happened.", ch: "依本文，將下列事件按發生順序排列：\n① The Florida Project\n② Anora\n③ Red Rocket\n④ Tangerine" },
+        options: [
+          { en: "(A) ④ → ① → ③ → ②", ch: "④夜晚還年輕(2015) → ①奇幻城堡(2017) → ③大箭男(2021) → ②艾諾拉(2025)", isCorrect: true },
+          { en: "(B) ① → ④ → ③ → ②", ch: "順序錯誤", isCorrect: false },
+          { en: "(C) ④ → ③ → ① → ②", ch: "順序錯誤", isCorrect: false },
+          { en: "(D) ③ → ④ → ① → ②", ch: "順序錯誤", isCorrect: false }
+        ],
+        explanation: "時序題推論 (Timeline)：文章是按照嚴格的編年史撰寫的。1. **④《夜晚還年輕》(Tangerine)** 以 iPhone 拍攝 ➔ 發生於 2015年。 2. **①《歡迎光臨奇幻城堡》(The Florida Project)** 放映 ➔ 發生於 2017年。 3. **③《火紅大箭男》(Red Rocket)** 入選坎城 ➔ 發生於 2021年。 4. **②《艾諾拉》(Anora)** 獲奧斯卡大獎 ➔ 發生於 2025年。正確時間軸順序為 ④ ➔ ① ➔ ③ ➔ ②，故選 (D)。"
+      },
+
+      {
+        id: "N1", type: "non-choice",
+        text: { en: "You **should** a_____ for the summer program before **the** d_____ this Friday.", ch: "你應在本週五截止日前申請暑期計畫。" },
+        options: [],
+        answer: "apply, deadline",
+        explanation: "字尾變化與詞性判斷：空格 ① 前方有助動詞 **should**，其後必須接**「原形動詞」**。配合中文字義「申請」及字首 a，填入 **apply**。此處不需做任何字尾變化。空格 ② 位於定冠詞 **the** 之後，必須填入**「名詞」**。配合中文字義「截止日」及字首 d，填入 **deadline**。"
+      },
+      {
+        id: "N2", type: "non-choice",
+        text: { en: "**The city library** / for new books and computers / **, which runs free workshops,** / is raising / more funds", ch: "句子重組" },
+        options: [],
+        answer: "The city library, which runs free workshops, is raising more funds for new books and computers.",
+        explanation: "核心文法句型：本題測驗「關係代名詞非限定用法」作為修飾語的插入位置。邏輯位置拆解：主要子句的核心主幹為**「圖書館正在籌資 (The city library is raising more funds)」**。補充說明的關係子句**「, which runs free workshops,」**必須緊緊跟隨在它所修飾的先行詞 **The city library** 之後。最後補上介系詞片語**「for new books and computers」**以說明籌資的具體目的。"
+      },
+      {
+        id: "N3", type: "non-choice",
+        text: { en: "如果你想**保持健康**，就**不該****吃太多速食**。", ch: "中譯英" },
+        options: [],
+        answer: "If you want to stay/keep healthy/fit/well, you shouldn't/shall not eat too much fast food.",
+        explanation: "核心動詞片語：前半部條件子句使用**「If you want to...」**，其中「保持健康」的常見核心搭配動詞為 **stay / keep healthy**。「不該」使用助動詞 **shouldn't**。「吃太多速食」對應的片語為 **eat too much fast food**。陷阱提醒：**fast food（速食）**在英文中通常被視為「不可數名詞」，因此前方的數量修飾語必須嚴格使用 **too much**，絕對不可誤用 too many。此外，連綴動詞 stay/keep 後方需接形容詞 (healthy) 表達狀態，不可誤用名詞或副詞形式。"
+      }
+    ];
+
+    // ==========================================
+    // 3. 元件：客製化 Markdown、點擊發音與文章對照
+    // ==========================================
+    const TextWithBold = ({ text, isExplanation = false }) => {
+      if (!text) return null;
+      const parts = text.split(/(\*\*.*?\*\*)/g);
+      return (
+        <span>
+          {parts.map((part, index) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              const content = part.slice(2, -2);
+              return (
+                <strong 
+                  key={index} 
+                  className={`font-bold ${isExplanation ? 'text-yellow-900 bg-yellow-200/50 px-1 mx-[2px] rounded' : 'text-blue-700'}`}
+                >
+                  {content}
+                </strong>
+              );
+            }
+            return <span key={index}>{part}</span>;
+          })}
+        </span>
+      );
+    };
+
+    const ClickableText = ({ text }) => {
+      if (!text) return null;
+      const boldParts = text.split(/(\*\*.*?\*\*)/g);
+      
+      return (
+        <span>
+          {boldParts.map((bPart, bIndex) => {
+            const isBold = bPart.startsWith('**') && bPart.endsWith('**');
+            const content = isBold ? bPart.slice(2, -2) : bPart;
+            const words = content.split(/([a-zA-Z']+)/);
+            
+            return (
+              <span key={bIndex} className={isBold ? "font-bold text-blue-700 bg-blue-50 px-1 rounded mx-[2px]" : ""}>
+                {words.map((word, wIndex) => {
+                  if (/^[a-zA-Z']+$/.test(word)) {
+                    return (
+                      <span 
+                        key={wIndex} 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          speak(word);
+                        }}
+                        className={`cursor-pointer transition-colors duration-150 rounded px-[2px]
+                          ${isBold ? 'hover:bg-blue-300 hover:text-blue-900' : 'hover:bg-blue-200 hover:text-blue-800'}`}
+                        title="點擊發音"
+                      >
+                        {word}
+                      </span>
+                    );
+                  }
+                  return <span key={wIndex}>{word}</span>;
+                })}
+              </span>
+            );
+          })}
+        </span>
+      );
+    };
+
+    const PassageReviewBox = ({ passage }) => {
+      const [activeIndex, setActiveIndex] = useState(null);
+
+      return (
+        <div className="mt-8 mb-12 bg-white rounded-2xl shadow-lg border-2 border-blue-200 overflow-hidden">
+          <div className="bg-blue-600 px-6 py-4 flex justify-between items-center text-white">
+            <h3 className="font-bold text-lg flex items-center">
+              <Icon name="BookOpen" size={20} className="mr-2" />
+              題組文章回顧與英中對照：{passage.title}
+            </h3>
+            <span className="hidden sm:inline-block text-xs bg-blue-500/50 px-3 py-1.5 rounded-full backdrop-blur-sm border border-blue-400">
+              💡 提示：長按句子可高亮對照
+            </span>
+          </div>
+          <div className="p-4 sm:p-6 bg-slate-50 flex flex-col gap-3">
+            <div className="sm:hidden text-xs text-blue-600 mb-2 font-medium flex items-center">
+              <Icon name="Info" size={14} className="mr-1" /> 長按/懸停句子可高亮英中對照
+            </div>
+            
+            {passage.content.map((sentence, idx) => (
+              <div
+                key={idx}
+                className={`p-4 rounded-xl transition-all duration-300 select-none cursor-pointer ${
+                  activeIndex === idx
+                    ? 'bg-yellow-100 ring-2 ring-yellow-400 shadow-md'
+                    : 'bg-white border border-slate-200 hover:border-blue-300 hover:shadow-sm'
+                }`}
+                onPointerDown={() => setActiveIndex(idx)}
+                onPointerUp={() => setActiveIndex(null)}
+                onPointerLeave={() => setActiveIndex(null)}
+                onContextMenu={(e) => e.preventDefault()}
+              >
+                <div className="flex items-start justify-between group/row">
+                  <div className="flex-1 pr-4">
+                    <p className={`text-lg leading-relaxed mb-2 transition-colors ${
+                      activeIndex === idx ? 'font-bold text-blue-900' : 'text-slate-800 font-medium'
+                    }`}>
+                      <ClickableText text={sentence.en} />
+                    </p>
+                    <p className={`text-base transition-colors ${
+                      activeIndex === idx ? 'font-bold text-blue-700' : 'text-slate-500'
+                    }`}>
+                      <TextWithBold text={sentence.ch} />
+                    </p>
+                  </div>
+                  
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      speak(sentence.en);
+                    }}
+                    className={`p-2 rounded-full transition-colors flex-shrink-0 mt-1 ${
+                      activeIndex === idx 
+                        ? 'text-blue-700 bg-blue-200 hover:bg-blue-300' 
+                        : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'
+                    }`}
+                    title="單句朗讀"
+                  >
+                    <Icon name="Volume2" size={20} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    // ==========================================
+    // 4. 主程式元件 (App)
+    // ==========================================
+    function App() {
+      const [filter, setFilter] = useState("all");
+      const [activePassage, setActivePassage] = useState(null);
+
+      const filteredQuestions = questions.filter(q => {
+        if (filter === "all") return true;
+        if (filter === "vocabulary" && q.type === "vocabulary") return true;
+        if (filter === "dialogue" && q.type === "dialogue") return true;
+        if (filter === "cloze" && q.type === "cloze") return true;
+        if (filter === "reading" && q.type === "reading") return true;
+        if (filter === "non-choice" && q.type === "non-choice") return true;
+        return false;
+      });
+
+      const filterOptions = [
+        { id: "all", label: "全部題目" },
+        { id: "vocabulary", label: "I. 詞彙題" },
+        { id: "dialogue", label: "II. 對話題" },
+        { id: "cloze", label: "III. 綜合測驗" },
+        { id: "reading", label: "IV. 閱讀測驗" },
+        { id: "non-choice", label: "非選擇題" }
+      ];
+
+      return (
+        <div className="flex flex-col h-screen bg-slate-50 overflow-hidden font-sans text-slate-800">
+          
+          {/* Header */}
+          <header className="bg-white border-b border-slate-200 p-4 flex items-center justify-between z-30 shadow-sm shrink-0">
+            <h1 className="text-lg md:text-2xl font-bold text-blue-800 flex items-center">
+              <Icon name="BookOpen" size={24} className="mr-2" />
+              114-5 英文試題檢討
+            </h1>
+          </header>
+
+          {/* 水平滑動標籤列 (取代原本的左側選單) */}
+          <div className="bg-white border-b border-slate-200 z-20 shrink-0 overflow-x-auto no-scrollbar shadow-sm">
+            <div className="flex space-x-2 p-3 min-w-max px-4">
+              {filterOptions.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setFilter(item.id)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                    filter === item.id 
+                      ? 'bg-blue-600 text-white shadow-md' 
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <main className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth relative">
+            <div className="max-w-4xl mx-auto space-y-8 pb-32">
+              
+              {/* 說明區塊 */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start text-blue-800">
+                <Icon name="Info" size={20} className="shrink-0 mt-0.5 mr-3" />
+                <div className="text-sm">
+                  <p><strong>單字發音：</strong> 點擊題目或選項中的任何單字即可聽取發音。</p>
+                  <p className="mt-1"><strong>全句朗讀：</strong> 點擊題目旁或文章區塊的 🔊 按鈕，以流暢的北美腔調朗讀整段。</p>
+                  <p className="mt-1"><strong>情境重點提示：</strong> 題目與解析中的 <strong className="bg-blue-100 px-1 rounded text-blue-700">藍底粗體</strong> 與 <strong className="bg-yellow-200/60 px-1 rounded text-yellow-900">黃底粗體</strong> 為解題的關鍵情境線索。</p>
+                  <p className="mt-1"><strong>題組逐段對照：</strong> 綜合測驗與閱讀測驗之最後一題下方，將提供英中對照區塊，長按即可高亮對接句型。</p>
+                </div>
+              </div>
+
+              {/* 題目列表 */}
+              {filteredQuestions.map((q, idx) => {
+                const isLastInPassage = q.passageRef && (idx === filteredQuestions.length - 1 || filteredQuestions[idx + 1].passageRef !== q.passageRef);
+
+                return (
+                  <React.Fragment key={q.id}>
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                      
+                      <div className="bg-slate-50 px-6 py-3 border-b border-slate-200 flex justify-between items-center">
+                        <span className="font-bold text-slate-700 bg-white px-3 py-1 rounded-md shadow-sm border border-slate-100">
+                          {q.type === 'non-choice' ? '非選擇題' : `Question ${q.id}`}
+                        </span>
+                        
+                        {q.passageRef && passages[q.passageRef] && (
+                          <button 
+                            onClick={() => setActivePassage(passages[q.passageRef])}
+                            className="flex items-center text-sm font-medium text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
+                          >
+                            <Icon name="FileText" size={16} className="mr-1.5" />
+                            閱讀文章
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="p-6">
+                        <div className="mb-6">
+                          <div className="flex items-start justify-between group">
+                            <p className="text-lg md:text-xl font-medium text-slate-800 leading-relaxed mb-2 whitespace-pre-wrap flex-1">
+                              <ClickableText text={safeGet(q, 'text.en')} />
+                            </p>
+                            
+                            <button
+                              onClick={() => {
+                                const textToSpeak = q.type === 'dialogue' ? stripSpeaker(safeGet(q, 'text.en')) : safeGet(q, 'text.en');
+                                speak(textToSpeak);
+                              }}
+                              className="ml-3 mt-1 p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors opacity-80 hover:opacity-100 flex-shrink-0"
+                              title="全句朗讀 (北美腔)"
+                            >
+                              <Icon name="Volume2" size={22} />
+                            </button>
+                          </div>
+
+                          <p className="text-slate-500 text-sm md:text-base border-l-4 border-slate-300 pl-3 py-1 whitespace-pre-wrap mt-2">
+                            <TextWithBold text={safeGet(q, 'text.ch')} />
+                          </p>
+                        </div>
+
+                        {q.type !== 'non-choice' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                            {safeGet(q, 'options', []).map((opt, oIdx) => (
+                              <div 
+                                key={oIdx}
+                                className={`relative p-4 rounded-xl border-2 transition-all flex flex-col justify-center
+                                  ${opt.isCorrect 
+                                    ? "bg-green-50 border-green-500 shadow-sm" 
+                                    : "bg-slate-50 border-slate-100 opacity-60 hover:opacity-100"}`}
+                              >
+                                {opt.isCorrect && (
+                                  <div className="absolute top-3 right-3 text-green-500">
+                                    <Icon name="CheckCircle" size={20} />
+                                  </div>
+                                )}
+                                <div className={`font-medium pr-6 ${opt.isCorrect ? "text-green-900" : "text-slate-700"}`}>
+                                  <ClickableText text={opt.en} />
+                                </div>
+                                <div className={`text-sm mt-1 pr-6 ${opt.isCorrect ? "text-green-700" : "text-slate-500"}`}>
+                                  <TextWithBold text={opt.ch} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {q.type === 'non-choice' && (
+                          <div className="mb-6 p-4 bg-green-50 border-2 border-green-500 rounded-xl">
+                            <div className="flex items-center text-green-700 mb-2 font-bold">
+                              <Icon name="CheckCircle" size={20} className="mr-2" />
+                              正確解答
+                            </div>
+                            <p className="text-green-900 font-medium text-lg">
+                              <ClickableText text={q.answer} />
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="bg-yellow-50/80 rounded-xl p-4 md:p-5 border border-yellow-200">
+                          <h4 className="flex items-center font-bold text-yellow-800 mb-2 text-sm uppercase tracking-wider">
+                            <Icon name="AlertCircle" size={16} className="mr-1.5" />
+                            解析
+                          </h4>
+                          <p className="text-slate-700 leading-relaxed text-sm md:text-base whitespace-pre-wrap">
+                            <TextWithBold text={q.explanation} isExplanation={true} />
+                          </p>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    {isLastInPassage && (
+                      <PassageReviewBox passage={passages[q.passageRef]} />
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </main>
+
+          {/* 閱讀模式 Modal */}
+          {activePassage && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+              <div className="bg-white w-full max-w-3xl max-h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                
+                <div className="bg-blue-600 px-6 py-4 flex justify-between items-center text-white shrink-0">
+                  <h3 className="font-bold text-lg md:text-xl flex items-center">
+                    <Icon name="BookOpen" size={24} className="mr-2" />
+                    {activePassage.title}
+                  </h3>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => speakFullPassage(activePassage.content)}
+                      className="p-2 bg-blue-500 hover:bg-blue-400 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+                      title="全文朗讀 (北美腔)"
+                    >
+                      <Icon name="Volume2" size={18} />
+                      <span className="hidden sm:inline">全文朗讀</span>
+                    </button>
+                    <button 
+                      onClick={() => {
+                        window.speechSynthesis.cancel(); 
+                        setActivePassage(null);
+                      }}
+                      className="p-2 bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors"
+                    >
+                      <Icon name="X" size={20} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-6 overflow-y-auto bg-slate-50 space-y-4">
+                  {activePassage.content.map((sentence, idx) => (
+                    <div key={idx} className="group p-4 bg-white rounded-xl shadow-sm border border-slate-100 hover:border-blue-300 hover:shadow-md transition-all flex items-start justify-between">
+                      <div className="flex-1 pr-4">
+                        <p className="text-slate-800 text-lg leading-relaxed mb-2 font-medium">
+                          <ClickableText text={sentence.en} />
+                        </p>
+                        <p className="text-slate-500 text-sm md:text-base group-hover:text-blue-700 transition-colors">
+                          {sentence.ch}
+                        </p>
+                      </div>
+                      
+                      <button
+                        onClick={() => speak(sentence.en)}
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0 mt-1"
+                        title="單句朗讀"
+                      >
+                        <Icon name="Volume2" size={20} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
