@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>每日國際時事晨讀 · 技高一微語塊通關寶典</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --accent: #f59e0b;
+      --accent-light: #fef3c7;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --success: #10b981;
+      --danger: #ef4444;
+      --chunk-highlight: #fef08a;
+      --chunk-border: #facc15;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", sans-serif; }
+    body { background: var(--bg); color: var(--text-main); line-height: 1.6; padding-bottom: 60px; }
+    
+    /* Header */
+    .header { background: #1e293b; color: white; padding: 24px 16px 20px; text-align: center; border-bottom: 3px solid var(--primary); position: sticky; top: 0; z-index: 50; }
+    .badge { display: inline-block; background: var(--primary); color: white; font-size: 12px; font-weight: bold; padding: 3px 10px; border-radius: 999px; margin-bottom: 8px; letter-spacing: 0.5px; }
+    .header h1 { font-size: 20px; font-weight: 800; line-height: 1.3; margin-bottom: 6px; }
+    .header p { font-size: 13px; color: #94a3b8; }
+    
+    /* Controls Bar */
+    .controls-bar { background: #0f172a; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #cbd5e1; }
+    .speed-btn { background: #334155; color: white; border: 1px solid #475569; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .speed-btn:hover { background: #475569; }
+
+    /* Container */
+    .container { max-width: 720px; margin: 0 auto; padding: 16px; }
+
+    /* News Card */
+    .news-card { background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 24px; overflow: hidden; }
+    .news-header { padding: 18px 20px 14px; background: linear-gradient(to right, #f8fafc, #ffffff); border-bottom: 1px solid var(--border); }
+    .topic-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: bold; color: var(--primary); background: #eff6ff; padding: 4px 10px; border-radius: 6px; margin-bottom: 8px; }
+    .news-title { font-size: 18px; font-weight: 700; color: #1e293b; line-height: 1.4; }
+    .news-title-cn { font-size: 14px; color: var(--text-muted); margin-top: 4px; font-weight: 500; }
+
+    /* Audio Bar */
+    .audio-action-bar { padding: 10px 20px; background: #f1f5f9; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+    .btn-audio { background: white; border: 1px solid #cbd5e1; color: #1e293b; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s; }
+    .btn-audio:hover { background: var(--primary); color: white; border-color: var(--primary); }
+    .read-time { font-size: 12px; color: var(--text-muted); }
+
+    /* Passage Body */
+    .passage-box { padding: 20px; }
+    .sentence-block { margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px dashed #e2e8f0; }
+    .sentence-block:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+    .sentence-en { font-size: 16px; line-height: 1.7; color: #1e293b; margin-bottom: 6px; font-weight: 450; }
+    .sentence-cn { font-size: 13.5px; color: #475569; line-height: 1.5; padding-left: 10px; border-left: 2px solid var(--primary); }
+    
+    /* Chunks */
+    .chunk { background: var(--chunk-highlight); border-bottom: 2px solid var(--chunk-border); padding: 1px 4px; border-radius: 4px; cursor: pointer; font-weight: 600; color: #854d0e; transition: all 0.2s; }
+    .chunk:hover { background: #fde047; }
+    .btn-speak-s { background: transparent; border: none; cursor: pointer; font-size: 14px; margin-left: 4px; opacity: 0.6; }
+    .btn-speak-s:hover { opacity: 1; transform: scale(1.1); }
+
+    /* Micro-Chunks Panel */
+    .chunks-section { background: #faf5ff; border: 1px solid #f3e8ff; border-radius: 12px; padding: 16px; margin: 0 20px 20px; }
+    .chunks-title { font-size: 14px; font-weight: 700; color: #6b21a8; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    .chunk-pill-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px; }
+    .chunk-pill { background: white; border: 1px solid #e9d5ff; border-radius: 8px; padding: 8px 12px; font-size: 13px; display: flex; flex-direction: column; cursor: pointer; transition: transform 0.15s; }
+    .chunk-pill:hover { transform: translateY(-2px); border-color: #a855f7; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .chunk-pill-en { font-weight: 700; color: #581c87; }
+    .chunk-pill-cn { font-size: 12px; color: #6b7280; margin-top: 2px; }
+
+    /* Vocab Cards */
+    .vocab-section { background: #f8fafc; border-top: 1px solid var(--border); padding: 16px 20px; }
+    .vocab-header { font-size: 13px; font-weight: 700; color: #475569; margin-bottom: 10px; display: flex; justify-content: space-between; }
+    .vocab-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+    .vocab-item { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 12px; }
+    .vocab-word { font-weight: 700; font-size: 14px; color: var(--primary); }
+    .vocab-ipa { color: #94a3b8; font-size: 11px; margin-bottom: 2px; }
+    .vocab-def { color: #334155; font-size: 12px; font-weight: 500; }
+
+    /* Interactive Quiz */
+    .quiz-box { margin: 0 20px 20px; background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 16px; }
+    .quiz-title { font-size: 13.5px; font-weight: 700; color: #1e293b; margin-bottom: 10px; }
+    .quiz-opt { display: block; width: 100%; text-align: left; background: #f8fafc; border: 1px solid var(--border); padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #334155; margin-bottom: 8px; cursor: pointer; transition: all 0.2s; }
+    .quiz-opt:hover { background: #e2e8f0; }
+    .quiz-opt.correct { background: #dcfce7 !important; border-color: #22c55e !important; color: #15803d !important; font-weight: bold; }
+    .quiz-opt.wrong { background: #fee2e2 !important; border-color: #ef4444 !important; color: #b91c1c !important; }
+    .quiz-explain { margin-top: 10px; font-size: 12.5px; color: #475569; background: #f1f5f9; padding: 10px; border-radius: 8px; display: none; line-height: 1.5; }
+
+    /* Footer */
+    .footer { text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 30px; }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <div class="badge">技高一 · 每日晨讀時事微語塊</div>
+    <h1>全球時事英語微語塊通關寶典</h1>
+    <p>每天 5 分鐘 · 3 則熱門時事 · 破除死背盲點</p>
+  </header>
+
+  <div class="controls-bar">
+    <span>🎧 美式真人語音 (TTS)</span>
+    <div>
+      <span style="margin-right: 6px;">朗讀語速:</span>
+      <button class="speed-btn" onclick="toggleSpeed()" id="speedBtn">0.85x 學習速</button>
+    </div>
+  </div>
+
+  <main class="container">
+
+    <!-- NEWS 1 -->
+    <article class="news-card">
+      <div class="news-header">
+        <div class="topic-tag">🤖 人工智慧與未來科技 · AI & Robotics</div>
+        <h2 class="news-title">Humanoid Robots Enter Modern Factories: Is the Future Here?</h2>
+        <div class="news-title-cn">人形機器人進駐現代工廠：未來生活已悄然來臨？</div>
+      </div>
+      <div class="audio-action-bar">
+        <button class="btn-audio" onclick="readPassage(1)">▶️ 朗讀全篇新聞</button>
+        <span class="read-time">⏱️ 閱讀時間：約 45 秒</span>
+      </div>
+      <div class="passage-box">
+        <div class="sentence-block">
+          <div class="sentence-en">
+            Tech companies around the world are developing smart humanoid robots to <span class="chunk" onclick="speak('work alongside human employees')">work alongside human employees</span>.
+            <button class="btn-speak-s" onclick="speak('Tech companies around the world are developing smart humanoid robots to work alongside human employees.')">🔊</button>
+          </div>
+          <div class="sentence-cn">世界各地的科技公司正在研發智慧人形機器人，與人類員工並肩工作。</div>
+        </div>
+        <div class="sentence-block">
+          <div class="sentence-en">
+            These robots can <span class="chunk" onclick="speak('perform complex tasks')">perform complex tasks</span>, carry heavy boxes, and work safely in <span class="chunk" onclick="speak('hazardous environments')">hazardous environments</span>.
+            <button class="btn-speak-s" onclick="speak('These robots can perform complex tasks, carry heavy boxes, and work safely in hazardous environments.')">🔊</button>
+          </div>
+          <div class="sentence-cn">這些機器人能夠執行複雜任務、搬運重箱，並在危險環境中安全工作。</div>
+        </div>
+        <div class="sentence-block">
+          <div class="sentence-en">
+            While some workers worry about losing their jobs, experts believe robots will <span class="chunk" onclick="speak('create career opportunities')">create career opportunities</span> in technology.
+            <button class="btn-speak-s" onclick="speak('While some workers worry about losing their jobs, experts believe robots will create career opportunities in technology.')">🔊</button>
+          </div>
+          <div class="sentence-cn">儘管有些工人擔心失去工作，但專家認為機器人將在科技領域創造新的職業機會。</div>
+        </div>
+      </div>
+
+      <!-- Chunks Box -->
+      <div class="chunks-section">
+        <div class="chunks-title">🧩 核心微語塊精選 (點擊發音)</div>
+        <div class="chunk-pill-grid">
+          <div class="chunk-pill" onclick="speak('work alongside human employees')">
+            <span class="chunk-pill-en">work alongside human employees</span>
+            <span class="chunk-pill-cn">與人類員工並肩工作</span>
+          </div>
+          <div class="chunk-pill" onclick="speak('perform complex tasks')">
+            <span class="chunk-pill-en">perform complex tasks</span>
+            <span class="chunk-pill-cn">執行複雜任務</span>
+          </div>
+          <div class="chunk-pill" onclick="speak('hazardous environments')">
+            <span class="chunk-pill-en">hazardous environments</span>
+            <span class="chunk-pill-cn">危險/有害環境</span>
+          </div>
+          <div class="chunk-pill" onclick="speak('create career opportunities')">
+            <span class="chunk-pill-en">create career opportunities</span>
+            <span class="chunk-pill-cn">創造職業機會</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vocab Grid -->
+      <div class="vocab-section">
+        <div class="vocab-header">
+          <span>📖 技高一核心單字導航</span>
+          <span>大考高頻標籤</span>
+        </div>
+        <div class="vocab-grid">
+          <div class="vocab-item">
+            <div class="vocab-word">complex</div>
+            <div class="vocab-ipa">/ˈkɑːm.pleks/ (adj.)</div>
+            <div class="vocab-def">複雜的；複合的</div>
+          </div>
+          <div class="vocab-item">
+            <div class="vocab-word">hazardous</div>
+            <div class="vocab-ipa">/ˈhæz.ɚ.dəs/ (adj.)</div>
+            <div class="vocab-def">危險的；危害的</div>
+          </div>
+          <div class="vocab-item">
+            <div class="vocab-word">opportunity</div>
+            <div class="vocab-ipa">/ˌɑː.pɚˈtuː.nə.t̬i/ (n.)</div>
+            <div class="vocab-def">機會；良機</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Quiz -->
+      <div class="quiz-box">
+        <div class="quiz-title">🎯 晨讀即測即評：According to experts, what will humanoid robots bring?</div>
+        <button class="quiz-opt" onclick="checkQuiz(this, false, 'q1-exp')">(A) Fewer technology jobs for young people</button>
+        <button class="quiz-opt" onclick="checkQuiz(this, true, 'q1-exp')">(B) New career opportunities in technology</button>
+        <button class="quiz-opt" onclick="checkQuiz(this, false, 'q1-exp')">(C) Complete elimination of all human workers</button>
+        <div class="quiz-explain" id="q1-exp">
+          💡 <strong>解析</strong>：文中最後一句提及「experts believe robots will create career opportunities in technology（專家相信機器人將在科技領域創造職業機會）」，故正確答案為 (B)。
+        </div>
+      </div>
+    </article>
+
+    <!-- NEWS 2 -->
+    <article class="news-card">
+      <div class="news-header">
+        <div class="topic-tag">🚀 太空探索與創新 · Space Exploration</div>
+        <h2 class="news-title">The Next Giant Leap: Next-Generation Moon Missions Prepare for Launch</h2>
+        <div class="news-title-cn">人類邁向下個巨大飛躍：新一代登月任務整裝待發！</div>
+      </div>
+      <div class="audio-action-bar">
+        <button class="btn-audio" onclick="readPassage(2)">▶️ 朗讀全篇新聞</button>
+        <span class="read-time">⏱️ 閱讀時間：約 45 秒</span>
+      </div>
+      <div class="passage-box">
+        <div class="sentence-block">
+          <div class="sentence-en">
+            Scientists and astronauts are <span class="chunk" onclick="speak('preparing for an ambitious journey')">preparing for an ambitious journey</span> back to the Moon.
+            <button class="btn-speak-s" onclick="speak('Scientists and astronauts are preparing for an ambitious journey back to the Moon.')">🔊</button>
+          </div>
+          <div class="sentence-cn">科學家與太空人正在為重返月球的雄心壯志之旅做準備。</div>
+        </div>
+        <div class="sentence-block">
+          <div class="sentence-en">
+            The upcoming mission aims to <span class="chunk" onclick="speak('explore polar regions')">explore polar regions</span> and test <span class="chunk" onclick="speak('innovative equipment')">innovative equipment</span> for future Mars missions.
+            <button class="btn-speak-s" onclick="speak('The upcoming mission aims to explore polar regions and test innovative equipment for future Mars missions.')">🔊</button>
+          </div>
+          <div class="sentence-cn">即將展開的任務旨在探索極地區域，並為未來的火星任務測試創新設備。</div>
+        </div>
+        <div class="sentence-block">
+          <div class="sentence-en">
+            Private space companies have joined the project, helping reduce launch costs and <span class="chunk" onclick="speak('speed up research progress')">speed up research progress</span>.
+            <button class="btn-speak-s" onclick="speak('Private space companies have joined the project, helping reduce launch costs and speed up research progress.')">🔊</button>
+          </div>
+          <div class="sentence-cn">民間太空公司也加入了這項計畫，協助降低發射成本並加速研究進度。</div>
+        </div>
+      </div>
+
+      <!-- Chunks Box -->
+      <div class="chunks-section">
+        <div class="chunks-title">🧩 核心微語塊精選 (點擊發音)</div>
+        <div class="chunk-pill-grid">
+          <div class="chunk-pill" onclick="speak('preparing for an ambitious journey')">
+            <span class="chunk-pill-en">preparing for an ambitious journey</span>
+            <span class="chunk-pill-cn">為宏大/雄心旅程準備</span>
+          </div>
+          <div class="chunk-pill" onclick="speak('explore polar regions')">
+            <span class="chunk-pill-en">explore polar regions</span>
+            <span class="chunk-pill-cn">探索極地區域</span>
+          </div>
+          <div class="chunk-pill" onclick="speak('innovative equipment')">
+            <span class="chunk-pill-en">innovative equipment</span>
+            <span class="chunk-pill-cn">創新設備 (不可數)</span>
+          </div>
+          <div class="chunk-pill" onclick="speak('speed up research progress')">
+            <span class="chunk-pill-en">speed up research progress</span>
+            <span class="chunk-pill-cn">加速研究進度</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vocab Grid -->
+      <div class="vocab-section">
+        <div class="vocab-header">
+          <span>📖 技高一核心單字導航</span>
+          <span>大考高頻標籤</span>
+        </div>
+        <div class="vocab-grid">
+          <div class="vocab-item">
+            <div class="vocab-word">ambitious</div>
+            <div class="vocab-ipa">/æmˈbɪʃ.əs/ (adj.)</div>
+            <div class="vocab-def">有抱負的；雄偉的</div>
+          </div>
+          <div class="vocab-item">
+            <div class="vocab-word">innovative</div>
+            <div class="vocab-ipa">/ˈɪn.ə.veɪ.t̬ɪv/ (adj.)</div>
+            <div class="vocab-def">創新的；革新的</div>
+          </div>
+          <div class="vocab-item">
+            <div class="vocab-word">equipment</div>
+            <div class="vocab-ipa">/ɪˈkwɪp.mənt/ (n.)</div>
+            <div class="vocab-def">設備；儀器（統測常考不可數）</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Quiz -->
+      <div class="quiz-box">
+        <div class="quiz-title">🎯 晨讀即測即評：How do private space companies help the Moon mission?</div>
+        <button class="quiz-opt" onclick="checkQuiz(this, true, 'q2-exp')">(A) By cutting launch costs and speeding up research</button>
+        <button class="quiz-opt" onclick="checkQuiz(this, false, 'q2-exp')">(B) By training all astronauts for Mars</button>
+        <button class="quiz-opt" onclick="checkQuiz(this, false, 'q2-exp')">(C) By canceling dangerous polar trips</button>
+        <div class="quiz-explain" id="q2-exp">
+          💡 <strong>解析</strong>：原文指出「helping reduce launch costs and speed up research progress」，選項 (A) 中「cutting launch costs」與原文「reduce launch costs」為精準同義替換！
+        </div>
+      </div>
+    </article>
+
+    <!-- NEWS 3 -->
+    <article class="news-card">
+      <div class="news-header">
+        <div class="topic-tag">🎮 青少年生活與電競 · Teen Lifestyle & Esports</div>
+        <h2 class="news-title">Balancing Esports and Screen Time: Pro Gamers Reveal Healthy Habits</h2>
+        <div class="news-title-cn">平衡電競與螢幕時間：職業電競選手公開健康秘訣</div>
+      </div>
+      <div class="audio-action-bar">
+        <button class="btn-audio" onclick="readPassage(3)">▶️ 朗讀全篇新聞</button>
+        <span class="read-time">⏱️ 閱讀時間：約 45 秒</span>
+      </div>
+      <div class="passage-box">
+        <div class="sentence-block">
+          <div class="sentence-en">
+            Competitive video gaming, known as esports, has become a billion-dollar industry <span class="chunk" onclick="speak('popular among young people')">popular among young people</span>.
+            <button class="btn-speak-s" onclick="speak('Competitive video gaming, known as esports, has become a billion-dollar industry popular among young people.')">🔊</button>
+          </div>
+          <div class="sentence-cn">名為「電子競技」的競賽型電玩，已成為風靡年輕世代的十億美元級全球產業。</div>
+        </div>
+        <div class="sentence-block">
+          <div class="sentence-en">
+            However, doctors warn that <span class="chunk" onclick="speak('excessive screen time')">excessive screen time</span> can <span class="chunk" onclick="speak('disrupt sleep quality')">disrupt sleep quality</span> and cause severe eye strain.
+            <button class="btn-speak-s" onclick="speak('However, doctors warn that excessive screen time can disrupt sleep quality and cause severe eye strain.')">🔊</button>
+          </div>
+          <div class="sentence-cn">然而，醫生警告，過長的螢幕時間可能會擾亂睡眠品質，並引起嚴重的眼睛疲勞。</div>
+        </div>
+        <div class="sentence-block">
+          <div class="sentence-en">
+            To <span class="chunk" onclick="speak('stay in peak condition')">stay in peak condition</span>, professional gamers now follow strict daily routines that include regular exercise and healthy meals.
+            <button class="btn-speak-s" onclick="speak('To stay in peak condition, professional gamers now follow strict daily routines that include regular exercise and healthy meals.')">🔊</button>
+          </div>
+          <div class="sentence-cn">為了維持在巔峰狀態，職業選手現在會遵循嚴格的生活常規，包含規律運動與健康飲食。</div>
+        </div>
+      </div>
+
+      <!-- Chunks Box -->
+      <div class="chunks-section">
+        <div class="chunks-title">🧩 核心微語塊精選 (點擊發音)</div>
+        <div class="chunk-pill-grid">
+          <div class="chunk-pill" onclick="speak('popular among young people')">
+            <span class="chunk-pill-en">popular among young people</span>
+            <span class="chunk-pill-cn">深受年輕族群歡迎</span>
+          </div>
+          <div class="chunk-pill" onclick="speak('excessive screen time')">
+            <span class="chunk-pill-en">excessive screen time</span>
+            <span class="chunk-pill-cn">過度的螢幕使用時間</span>
+          </div>
+          <div class="chunk-pill" onclick="speak('disrupt sleep quality')">
+            <span class="chunk-pill-en">disrupt sleep quality</span>
+            <span class="chunk-pill-cn">擾亂睡眠品質</span>
+          </div>
+          <div class="chunk-pill" onclick="speak('stay in peak condition')">
+            <span class="chunk-pill-en">stay in peak condition</span>
+            <span class="chunk-pill-cn">維持在巔峰狀態</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vocab Grid -->
+      <div class="vocab-section">
+        <div class="vocab-header">
+          <span>📖 技高一核心單字導航</span>
+          <span>大考高頻標籤</span>
+        </div>
+        <div class="vocab-grid">
+          <div class="vocab-item">
+            <div class="vocab-word">competitive</div>
+            <div class="vocab-ipa">/kəmˈpet̬.ə.t̬ɪv/ (adj.)</div>
+            <div class="vocab-def">競爭的；好勝的</div>
+          </div>
+          <div class="vocab-item">
+            <div class="vocab-word">excessive</div>
+            <div class="vocab-ipa">/ɪkˈses.ɪv/ (adj.)</div>
+            <div class="vocab-def">過多的；過度的</div>
+          </div>
+          <div class="vocab-item">
+            <div class="vocab-word">routine</div>
+            <div class="vocab-ipa">/ruːˈtiːn/ (n.)</div>
+            <div class="vocab-def">例行公事；生活常規</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Quiz -->
+      <div class="quiz-box">
+        <div class="quiz-title">🎯 晨讀即測即評：What do pro gamers do to maintain top performance?</div>
+        <button class="quiz-opt" onclick="checkQuiz(this, false, 'q3-exp')">(A) Play games 24 hours without resting</button>
+        <button class="quiz-opt" onclick="checkQuiz(this, true, 'q3-exp')">(B) Follow routines with regular exercise and healthy meals</button>
+        <button class="quiz-opt" onclick="checkQuiz(this, false, 'q3-exp')">(C) Stop sleeping at night</button>
+        <div class="quiz-explain" id="q3-exp">
+          💡 <strong>解析</strong>：文中指明職業電競選手「follow strict daily routines that include regular exercise and healthy meals（遵循包含規律運動與健康飲食的嚴格常規）」，故選 (B)。
+        </div>
+      </div>
+    </article>
+
+    <footer class="footer">
+      <p>技術型高中英語教研資產 · 純前端原生離線自適應學習網頁</p>
+      <p>支援手機、平板與桌機 · 免安裝任何 App</p>
+    </footer>
+  </main>
+
+  <script>
+    let currentSpeed = 0.85;
+    const passages = {
+      1: "Tech companies around the world are developing smart humanoid robots to work alongside human employees. These robots can perform complex tasks, carry heavy boxes, and work safely in hazardous environments. While some workers worry about losing their jobs, experts believe robots will create career opportunities in technology.",
+      2: "Scientists and astronauts are preparing for an ambitious journey back to the Moon. The upcoming mission aims to explore polar regions and test innovative equipment for future Mars missions. Private space companies have joined the project, helping reduce launch costs and speed up research progress.",
+      3: "Competitive video gaming, known as esports, has become a billion-dollar industry popular among young people. However, doctors warn that excessive screen time can disrupt sleep quality and cause severe eye strain. To stay in peak condition, professional gamers now follow strict daily routines that include regular exercise and healthy meals."
+    };
+
+    function toggleSpeed() {
+      if (currentSpeed === 0.85) {
+        currentSpeed = 1.0;
+        document.getElementById('speedBtn').innerText = '1.0x 正常速';
+      } else {
+        currentSpeed = 0.85;
+        document.getElementById('speedBtn').innerText = '0.85x 學習速';
+      }
+    }
+
+    function speak(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = 'en-US';
+        utter.rate = currentSpeed;
+        window.speechSynthesis.speak(utter);
+      }
+    }
+
+    function readPassage(id) {
+      speak(passages[id]);
+    }
+
+    function checkQuiz(btn, isCorrect, explainId) {
+      const parent = btn.parentElement;
+      const opts = parent.querySelectorAll('.quiz-opt');
+      opts.forEach(o => o.disabled = true);
+      
+      if (isCorrect) {
+        btn.classList.add('correct');
+      } else {
+        btn.classList.add('wrong');
+        opts.forEach(o => {
+          if (o.innerText.includes('(B)')) o.classList.add('correct');
+        });
+      }
+      document.getElementById(explainId).style.display = 'block';
+    }
+  </script>
+</body>
+</html>
